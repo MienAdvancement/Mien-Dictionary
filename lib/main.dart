@@ -128,6 +128,8 @@ class RowEntry {
   }
 }
 
+enum SearchLang { mien, english, chinese, thai }
+
 class DictionaryHome extends StatefulWidget {
   const DictionaryHome({super.key});
 
@@ -138,36 +140,72 @@ class DictionaryHome extends StatefulWidget {
 class _DictionaryHomeState extends State<DictionaryHome> {
   List<RowEntry> rows = const [];
   String q = '';
+  SearchLang _inputLang = SearchLang.mien;
+  SearchLang _outputLang = SearchLang.english; // used only when input is Mien
 
   Timer? _debounce;
   String _qNorm = '';
   String _previewMeaning(RowEntry e) {
-    String pick(String s) => s.trim();
+    String clean(String s) => s.trim();
 
-    final en = pick(e.english);
-    final zh = pick(e.chinese);
-    final th = pick(e.thai);
+    String pickByLang(SearchLang lang) {
+      switch (lang) {
+        case SearchLang.mien:
+          return clean(e.mien);
+        case SearchLang.english:
+          return clean(e.english);
+        case SearchLang.chinese:
+          return clean(e.chinese);
+        case SearchLang.thai:
+          return clean(e.thai);
+      }
+    }
 
-    final parts = <String>[];
-    if (en.isNotEmpty) parts.add(en);
-    if (zh.isNotEmpty) parts.add(zh);
-    if (th.isNotEmpty) parts.add(th);
+    // Always show Mien on the list.
+    final left = pickByLang(SearchLang.mien);
 
-    if (parts.isEmpty)
-      return e.partOfSp.trim().isEmpty ? '' : e.partOfSp.trim();
+    // Decide what the second line shows:
+    SearchLang rightLang;
+    if (_inputLang == SearchLang.mien) {
+      // If user types Mien, they choose which translation they want to see.
+      rightLang = _outputLang;
+    } else {
+      // If user types English/Chinese/Thai, show that same language as context.
+      rightLang = _inputLang;
+    }
 
-    // Keep it short so the list stays readable
-    final joined = parts.join(' • ');
-    return joined.length > 80 ? '${joined.substring(0, 80)}…' : joined;
+    final right = pickByLang(rightLang);
+
+    // If the right side is empty, fall back to POS so something useful shows.
+    final fallback = clean(e.partOfSp);
+    final showRight = right.isNotEmpty ? right : fallback;
+
+    // Only show one line (the “right” info) because title already shows Mien.
+    return showRight;
+  }
+
+  bool _matchesSelected(RowEntry r, String qn) {
+    switch (_inputLang) {
+      case SearchLang.mien:
+        return normalizeForSearch(r.mien).contains(qn);
+      case SearchLang.english:
+        return normalizeForSearch(r.english).contains(qn);
+      case SearchLang.chinese:
+        return r.chinese.trim().contains(qn) ||
+            normalizeForSearch(r.chinese).contains(qn);
+      case SearchLang.thai:
+        return r.thai.trim().contains(qn) ||
+            normalizeForSearch(r.thai).contains(qn);
+    }
   }
 
   List<RowEntry> get filtered {
     if (rows.isEmpty) return const [];
 
     final qn = _qNorm.trim();
-    if (qn.isEmpty) return rows;
+    if (qn.isEmpty) return const []; // <-- BLANK page: no list until typing
 
-    return rows.where((r) => r.matchesQuery(qn)).toList();
+    return rows.where((r) => _matchesSelected(r, qn)).toList();
   }
 
   @override
@@ -226,57 +264,131 @@ class _DictionaryHomeState extends State<DictionaryHome> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: const InputDecoration(
-                labelText: 'Search (Mien / English / Chinese / Thai / …)',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (v) {
-                _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 250), () {
-                  setState(() {
-                    _qNorm = normalizeForSearch(v);
-                  });
-                });
-              },
-            ),
-          ),
-          Expanded(
-            child: rows.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : results.isEmpty
-                ? const Center(child: Text('No matches'))
-                : ListView.separated(
-                    itemCount: results.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final r = results[i];
-                      return ListTile(
-                        title: Text(r.mien),
-                        subtitle: Text(_previewMeaning(r)),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => RowDetail(row: r)),
-                        ),
-                      );
+      body: rows.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  DropdownButtonFormField<SearchLang>(
+                    value: _inputLang,
+                    decoration: const InputDecoration(
+                      labelText: 'Search language (input)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: SearchLang.mien,
+                        child: Text('Mien'),
+                      ),
+                      DropdownMenuItem(
+                        value: SearchLang.english,
+                        child: Text('English'),
+                      ),
+                      DropdownMenuItem(
+                        value: SearchLang.chinese,
+                        child: Text('Chinese'),
+                      ),
+                      DropdownMenuItem(
+                        value: SearchLang.thai,
+                        child: Text('Thai'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _inputLang = v);
                     },
                   ),
-          ),
-        ],
-      ),
+
+                  const SizedBox(height: 10),
+
+                  if (_inputLang == SearchLang.mien)
+                    DropdownButtonFormField<SearchLang>(
+                      value: _outputLang,
+                      decoration: const InputDecoration(
+                        labelText: 'Output language',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: SearchLang.english,
+                          child: Text('English'),
+                        ),
+                        DropdownMenuItem(
+                          value: SearchLang.chinese,
+                          child: Text('Chinese'),
+                        ),
+                        DropdownMenuItem(
+                          value: SearchLang.thai,
+                          child: Text('Thai'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _outputLang = v);
+                      },
+                    ),
+
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Type to search...',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) {
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 250), () {
+                        setState(() => _qNorm = normalizeForSearch(v));
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: results.isEmpty
+                        ? const Center(child: Text('Type a word to search'))
+                        : ListView.separated(
+                            itemCount: results.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final r = results[i];
+                              return ListTile(
+                                title: Text(r.mien),
+                                subtitle: Text(_previewMeaning(r)),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => RowDetail(
+                                      row: r,
+                                      inputLang: _inputLang,
+                                      outputLang: _outputLang,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }
 
 class RowDetail extends StatelessWidget {
   final RowEntry row;
-  const RowDetail({super.key, required this.row});
+  final SearchLang inputLang;
+  final SearchLang outputLang;
+
+  const RowDetail({
+    super.key,
+    required this.row,
+    required this.inputLang,
+    required this.outputLang,
+  });
 
   Widget _kv(String label, String value) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
@@ -316,9 +428,16 @@ class RowDetail extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
-              _kv('English', e.english),
-              _kv('Chinese', e.chinese),
-              _kv('Thai', e.thai),
+
+              // If input was Mien, show only chosen output language:
+              if (inputLang == SearchLang.mien) ...[
+                if (outputLang == SearchLang.english) _kv('English', e.english),
+                if (outputLang == SearchLang.chinese) _kv('Chinese', e.chinese),
+                if (outputLang == SearchLang.thai) _kv('Thai', e.thai),
+              ] else ...[
+                // If input was English/Chinese/Thai, show Mien only:
+                _kv('Mien', e.mien),
+              ],
 
               const SizedBox(height: 16),
 
