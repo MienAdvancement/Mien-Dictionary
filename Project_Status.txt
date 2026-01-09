@@ -1,0 +1,9 @@
+Mien Dictionary Flutter app
+- CSV-based assets/words.csv
+- Two-panel Google Translate layout
+- startsWith-only search
+- Mic dictation works in Chrome
+- Speaker icons only for Mien
+- Mandarin/Cantonese shown only when output=Chinese
+- CanvasKit renderer
+- Next step: audio playback / recording
