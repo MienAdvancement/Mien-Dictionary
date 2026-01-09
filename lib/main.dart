@@ -133,7 +133,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   bool _isListening = false;
   String? _sttStatus;
 
-  // IMPORTANT: session token to ignore late onResult callbacks
+  // IMPORTANT: session token to ignore late onResult callbacks (Chrome can deliver late)
   int _listenSession = 0;
 
   @override
@@ -437,11 +437,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final localeId = _sttLocaleFor(_inputLang);
 
-    // Start a new session and capture token for this listen call
+    // New session token for this listen call
     _listenSession++;
     final mySession = _listenSession;
 
-    // Clear existing text at start of dictation (prevents "carry-over")
+    // Clear at start so old word never "sticks"
     _queryCtrl.clear();
     _queryFocus.requestFocus();
 
@@ -458,18 +458,20 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         // Ignore late results from previous sessions (e.g., after pressing X)
         if (mySession != _listenSession) return;
 
-        // Commit ONLY the final result (prevents junk partial prefixes like "tia.")
-        if (!res.finalResult) return;
-
         final txt = res.recognizedWords.trim();
-        if (txt.isNotEmpty) {
-          _queryCtrl.text = txt;
-          _queryCtrl.selection = TextSelection.collapsed(
-            offset: _queryCtrl.text.length,
-          );
-        }
+        if (txt.isEmpty) return;
 
-        setState(() => _isListening = false);
+        // Optional: ignore very short junk partials (helps with "tia." style noise)
+        if (!res.finalResult && txt.length < 3) return;
+
+        // CHROME-FRIENDLY: update textbox on partial results too
+        _queryCtrl.text = txt;
+        _queryCtrl.selection = TextSelection.collapsed(offset: txt.length);
+
+        // If final, stop listening UI state
+        if (res.finalResult) {
+          setState(() => _isListening = false);
+        }
       },
     );
   }

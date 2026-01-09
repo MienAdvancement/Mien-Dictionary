@@ -37163,14 +37163,18 @@ s.at=!0
 s.ax="listening"},
 $S:0}
 A.ad2.prototype={
-$1(a){var s,r,q=this.a
-if(this.b!==q.ay)return
-if(!a.b)return
+$1(a){var s,r,q,p,o=this.a
+if(this.b!==o.ay)return
 s=a.a
 r=B.d.dS(s.length!==0?B.b.ga1(s).a:"")
-if(r.length!==0){s=q.f
-s.mh(s.a.r5(B.bm,B.yx,r))
-s.snv(A.iQ(B.j,s.a.a.length))}q.ae(new A.acY(q))},
+s=r.length
+if(s===0)return
+q=a.b
+if(!q&&s<3)return
+p=o.f
+p.mh(p.a.r5(B.bm,B.yx,r))
+p.snv(A.iQ(B.j,s))
+if(q)o.ae(new A.acY(o))},
 $S:442}
 A.acY.prototype={
 $0(){return this.a.at=!1},
