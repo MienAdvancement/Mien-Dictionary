@@ -513,7 +513,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    // ✅ iPhone Safari keyboard/viewport helper
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('Mien Dictionary'),
         actions: [
@@ -547,27 +551,39 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 builder: (context, c) {
                   final wide = c.maxWidth >= 900;
 
-                  final panels = wide
-                      ? Row(
-                          children: [
-                            Expanded(child: _leftPanel(cs)),
-                            const SizedBox(width: 12),
-                            Expanded(child: _rightPanel(cs)),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _leftPanel(cs),
-                            const SizedBox(height: 12),
-                            _rightPanel(cs),
-                          ],
-                        );
+                  if (wide) {
+                    // Desktop/tablet: keep your original layout
+                    final panels = Row(
+                      children: [
+                        Expanded(child: _leftPanel(cs)),
+                        const SizedBox(width: 12),
+                        Expanded(child: _rightPanel(cs)),
+                      ],
+                    );
 
+                    return Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          Expanded(child: panels),
+                          const SizedBox(height: 12),
+                          _resultsPanel(cs),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // ✅ Mobile/iPhone Safari: single scrollable page
                   return Padding(
                     padding: const EdgeInsets.all(12),
-                    child: Column(
+                    child: ListView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.only(bottom: bottomInset + 16),
                       children: [
-                        Expanded(child: panels),
+                        _leftPanel(cs),
+                        const SizedBox(height: 12),
+                        _rightPanel(cs),
                         const SizedBox(height: 12),
                         _resultsPanel(cs),
                       ],
@@ -674,10 +690,19 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             const SizedBox(height: 6),
 
             // Search box (with clear "X" like Google)
-            Expanded(
+            // NOTE: On mobile we are in a ListView now, so avoid Expanded here.
+            // Keep the TextField tall enough to be usable.
+            SizedBox(
+              height: 180,
               child: TextField(
                 controller: _queryCtrl,
                 focusNode: _queryFocus,
+
+                // ✅ iPhone Safari: ensure focused field can scroll above keyboard
+                scrollPadding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 120,
+                ),
+
                 maxLines: null,
                 expands: true,
                 textAlignVertical: TextAlignVertical.top,
@@ -760,7 +785,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             const SizedBox(height: 10),
 
             // Output display box (Google style)
-            Expanded(
+            SizedBox(
+              height: 240,
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -913,7 +939,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         const SizedBox(width: 10),
         Expanded(
           child: DropdownButtonFormField<Lang>(
-            value: value,
+            initialValue: value,
             items: items
                 .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
                 .toList(),
