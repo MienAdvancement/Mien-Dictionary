@@ -161,8 +161,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   List<Lang> _allowedOutputsFor(Lang input) {
     // If input is Mien -> output can be English/Chinese/Thai
     // If input is English/Chinese/Thai -> output can only be Mien
-    if (input == Lang.mien)
+    if (input == Lang.mien) {
       return const [Lang.english, Lang.chinese, Lang.thai];
+    }
     return const [Lang.mien];
   }
 
@@ -278,8 +279,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         final usage = cell(r, 'Usage').trim();
         final origin = cell(r, 'Origin').trim();
 
-        if (mien.isEmpty && english.isEmpty && chinese.isEmpty && thai.isEmpty)
+        if (mien.isEmpty &&
+            english.isEmpty &&
+            chinese.isEmpty &&
+            thai.isEmpty) {
           continue;
+        }
 
         final idSource = '$mien|$english|$pos|$ri';
         final id = base64Url.encode(utf8.encode(idSource)).replaceAll('=', '');
@@ -447,6 +452,26 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // Small helper: speaker button that always stays visible (web-safe)
+  Widget _speakerButton({required ColorScheme cs, required String tooltip}) {
+    return IconButton(
+      tooltip: tooltip,
+      // IMPORTANT: do NOT set onPressed to null, or it may look invisible on web/themes.
+      onPressed: () {
+        _toast(
+          kIsWeb
+              ? 'Audio playback will be added later (Web).'
+              : 'Audio playback will be added later (Mobile).',
+        );
+      },
+      icon: Icon(
+        Icons.volume_up,
+        // Use a strong theme color so it stands out reliably on web.
+        color: cs.primary,
+      ),
+    );
+  }
+
   // ✅ Mandarin/Cantonese ONLY when output is Chinese
   String _metaLines(DictEntry e) {
     final parts = <String>[];
@@ -458,10 +483,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     // Only when output = Chinese
     if (_outputLang == Lang.chinese) {
-      if (e.mandarin.trim().isNotEmpty)
+      if (e.mandarin.trim().isNotEmpty) {
         parts.add('Mandarin: ${e.mandarin.trim()}');
-      if (e.cantonese.trim().isNotEmpty)
+      }
+      if (e.cantonese.trim().isNotEmpty) {
         parts.add('Cantonese: ${e.cantonese.trim()}');
+      }
     }
 
     return parts.join('\n');
@@ -603,7 +630,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 _applyFilter();
               },
             ),
-
             const SizedBox(height: 6),
 
             // Speak-to-search mic button
@@ -636,7 +662,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
               ],
             ),
-
             const SizedBox(height: 6),
 
             // Search box (with clear "X" like Google)
@@ -669,7 +694,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 10),
 
             // Bottom row: loaded count + optional LEFT speaker
@@ -683,12 +707,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
                 ),
                 if (showLeftSpeaker) ...[
-                  IconButton(
-                    tooltip: kIsWeb
-                        ? 'Mien pronunciation (input) — audio later'
-                        : 'Mien pronunciation (input) — audio later',
-                    onPressed: null, // enable later on mobile
-                    icon: Icon(Icons.volume_up, color: cs.onSurfaceVariant),
+                  _speakerButton(
+                    cs: cs,
+                    tooltip: 'Mien pronunciation (input) — audio later',
                   ),
                 ],
               ],
@@ -786,19 +807,15 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                       ),
               ),
             ),
-
             const SizedBox(height: 10),
 
             // RIGHT speaker only when Output=Mien
             if (showRightSpeaker)
               Row(
                 children: [
-                  IconButton(
-                    tooltip: kIsWeb
-                        ? 'Mien pronunciation (output) — audio later'
-                        : 'Mien pronunciation (output) — audio later',
-                    onPressed: null, // enable later on mobile
-                    icon: Icon(Icons.volume_up, color: cs.onSurfaceVariant),
+                  _speakerButton(
+                    cs: cs,
+                    tooltip: 'Mien pronunciation (output) — audio later',
                   ),
                   const SizedBox(width: 6),
                   Expanded(
