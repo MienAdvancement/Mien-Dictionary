@@ -34,43 +34,6 @@ addEventListener("message", eventListener);
 if (!window._flutter) {
   window._flutter = {};
 }
-_flutter.buildConfig = {"engineRevision":"c29809135135e262a912cf583b2c90deb9ded610","builds":[{"compileTarget":"dart2wasm","renderer":"skwasm","mainWasmPath":"main.dart.wasm","jsSupportRuntimePath":"main.dart.mjs"},{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.js"}]};
+_flutter.buildConfig = {"engineRevision":"c29809135135e262a912cf583b2c90deb9ded610","builds":[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.js"},{}]};
 
-// ---- iPhone Safari workaround: prefer CanvasKit CPU-only ----
-const params = new URLSearchParams(window.location.search);
-const rendererParam = params.get("renderer"); // "skwasm" | "canvaskit"
-const cpuParam = params.get("cpu");           // "1" to force CPU-only
-
-function isIOSSafari() {
-  const ua = navigator.userAgent;
-  const isIOS = /iPhone|iPad|iPod/.test(ua);
-  const isWebKit = /AppleWebKit/.test(ua);
-  const isNotCriOS = !/CriOS/.test(ua);
-  const isNotFxiOS = !/FxiOS/.test(ua);
-  return isIOS && isWebKit && isNotCriOS && isNotFxiOS;
-}
-
-const config = {};
-
-// Default behavior if no URL params:
-if (!rendererParam) {
-  if (isIOSSafari()) {
-    config.renderer = "canvaskit";
-    config.canvasKitForceCpuOnly = true;
-  } else {
-    config.renderer = "skwasm";
-    config.forceSingleThreadedSkwasm = true;
-  }
-} else if (rendererParam === "canvaskit") {
-  config.renderer = "canvaskit";
-  if (cpuParam === "1") config.canvasKitForceCpuOnly = true;
-} else if (rendererParam === "skwasm") {
-  config.renderer = "skwasm";
-  config.forceSingleThreadedSkwasm = true;
-}
-
-_flutter.loader.load({
-  serviceWorkerSettings: null,
-  config
-});
-
+_flutter.loader.load();
