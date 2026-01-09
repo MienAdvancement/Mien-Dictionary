@@ -133,6 +133,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   bool _isListening = false;
   String? _sttStatus;
 
+  // IMPORTANT: session token to ignore late onResult callbacks
+  int _listenSession = 0;
+
   @override
   void initState() {
     super.initState();
@@ -398,13 +401,27 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     }
   }
 
-  Future<void> _toggleDictation() async {
+  Future<void> _stopDictationSession({String? status}) async {
+    _listenSession++; // invalidate any late callbacks
     if (_isListening) {
       await _stt.stop();
-      setState(() {
-        _isListening = false;
-        _sttStatus = 'stopped';
-      });
+    }
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+      _sttStatus = status ?? 'stopped';
+    });
+  }
+
+  Future<void> _clearSearchAndCancelDictation() async {
+    await _stopDictationSession(status: 'cleared');
+    _queryCtrl.clear();
+    _queryFocus.requestFocus();
+  }
+
+  Future<void> _toggleDictation() async {
+    if (_isListening) {
+      await _stopDictationSession(status: 'stopped');
       return;
     }
 
@@ -420,6 +437,14 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final localeId = _sttLocaleFor(_inputLang);
 
+    // Start a new session and capture token for this listen call
+    _listenSession++;
+    final mySession = _listenSession;
+
+    // Clear existing text at start of dictation (prevents "carry-over")
+    _queryCtrl.clear();
+    _queryFocus.requestFocus();
+
     setState(() {
       _isListening = true;
       _sttStatus = 'listening';
@@ -430,6 +455,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       partialResults: true,
       listenMode: stt.ListenMode.search,
       onResult: (res) {
+        // Ignore late results from previous sessions (e.g., after pressing X)
+        if (mySession != _listenSession) return;
+
+        // Commit ONLY the final result (prevents junk partial prefixes like "tia.")
+        if (!res.finalResult) return;
+
         final txt = res.recognizedWords.trim();
         if (txt.isNotEmpty) {
           _queryCtrl.text = txt;
@@ -437,9 +468,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             offset: _queryCtrl.text.length,
           );
         }
-        if (res.finalResult) {
-          setState(() => _isListening = false);
-        }
+
+        setState(() => _isListening = false);
       },
     );
   }
@@ -450,26 +480,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  // Small helper: speaker button that always stays visible (web-safe)
-  Widget _speakerButton({required ColorScheme cs, required String tooltip}) {
-    return IconButton(
-      tooltip: tooltip,
-      // IMPORTANT: do NOT set onPressed to null, or it may look invisible on web/themes.
-      onPressed: () {
-        _toast(
-          kIsWeb
-              ? 'Audio playback will be added later (Web).'
-              : 'Audio playback will be added later (Mobile).',
-        );
-      },
-      icon: Icon(
-        Icons.volume_up,
-        // Use a strong theme color so it stands out reliably on web.
-        color: cs.primary,
-      ),
-    );
   }
 
   // ✅ Mandarin/Cantonese ONLY when output is Chinese
@@ -512,10 +522,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           ),
           IconButton(
             tooltip: 'Clear search',
-            onPressed: () {
-              _queryCtrl.clear();
-              _queryFocus.requestFocus();
-            },
+            onPressed: _clearSearchAndCancelDictation,
             icon: const Icon(Icons.clear),
           ),
         ],
@@ -680,16 +687,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
                   isDense: true,
 
-                  // Clear "X"
+                  // Clear "X" (also cancels dictation!)
                   suffixIcon: _queryCtrl.text.trim().isEmpty
                       ? null
                       : IconButton(
                           tooltip: 'Clear',
                           icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _queryCtrl.clear();
-                            _queryFocus.requestFocus();
-                          },
+                          onPressed: _clearSearchAndCancelDictation,
                         ),
                 ),
               ),
@@ -707,9 +711,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
                 ),
                 if (showLeftSpeaker) ...[
-                  _speakerButton(
-                    cs: cs,
-                    tooltip: 'Mien pronunciation (input) — audio later',
+                  IconButton(
+                    tooltip: kIsWeb
+                        ? 'Mien pronunciation (input) — audio later'
+                        : 'Mien pronunciation (input) — audio later',
+                    onPressed: () => _toast('Audio will be added later.'),
+                    icon: Icon(Icons.volume_up, color: cs.primary),
                   ),
                 ],
               ],
@@ -813,9 +820,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             if (showRightSpeaker)
               Row(
                 children: [
-                  _speakerButton(
-                    cs: cs,
-                    tooltip: 'Mien pronunciation (output) — audio later',
+                  IconButton(
+                    tooltip: kIsWeb
+                        ? 'Mien pronunciation (output) — audio later'
+                        : 'Mien pronunciation (output) — audio later',
+                    onPressed: () => _toast('Audio will be added later.'),
+                    icon: Icon(Icons.volume_up, color: cs.primary),
                   ),
                   const SizedBox(width: 6),
                   Expanded(
