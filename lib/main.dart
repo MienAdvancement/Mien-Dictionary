@@ -516,82 +516,91 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     // ✅ iPhone Safari keyboard/viewport helper
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const Text('Mien Dictionary'),
-        actions: [
-          IconButton(
-            tooltip: 'Reload CSV',
-            onPressed: _loadCsv,
-            icon: const Icon(Icons.refresh),
+    // ✅ iPhone Safari rotation stability
+    return OrientationBuilder(
+      builder: (context, orientation) {
+        return Scaffold(
+          resizeToAvoidBottomInset: true,
+          appBar: AppBar(
+            title: const Text('Mien Dictionary'),
+            actions: [
+              IconButton(
+                tooltip: 'Reload CSV',
+                onPressed: _loadCsv,
+                icon: const Icon(Icons.refresh),
+              ),
+              IconButton(
+                tooltip: 'Clear search',
+                onPressed: _clearSearchAndCancelDictation,
+                icon: const Icon(Icons.clear),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Clear search',
-            onPressed: _clearSearchAndCancelDictation,
-            icon: const Icon(Icons.clear),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: _loading
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text('Loading assets/words.csv…'),
-                  ],
-                ),
-              )
-            : (_loadError != null)
-            ? _errorView(cs, _loadError!)
-            : LayoutBuilder(
-                builder: (context, c) {
-                  final wide = c.maxWidth >= 900;
-
-                  if (wide) {
-                    // Desktop/tablet: keep your original layout
-                    final panels = Row(
-                      children: [
-                        Expanded(child: _leftPanel(cs)),
-                        const SizedBox(width: 12),
-                        Expanded(child: _rightPanel(cs)),
-                      ],
-                    );
-
-                    return Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        children: [
-                          Expanded(child: panels),
-                          const SizedBox(height: 12),
-                          _resultsPanel(cs),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // ✅ Mobile/iPhone Safari: single scrollable page
-                  return Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: ListView(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.only(bottom: bottomInset + 16),
-                      children: [
-                        _leftPanel(cs),
-                        const SizedBox(height: 12),
-                        _rightPanel(cs),
-                        const SizedBox(height: 12),
-                        _resultsPanel(cs),
+          body: SafeArea(
+            child: _loading
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('Loading assets/words.csv…'),
                       ],
                     ),
-                  );
-                },
-              ),
-      ),
+                  )
+                : (_loadError != null)
+                ? _errorView(cs, _loadError!)
+                : LayoutBuilder(
+                    builder: (context, c) {
+                      final wide = c.maxWidth >= 900;
+
+                      if (wide) {
+                        // Desktop/tablet: keep your original layout
+                        final panels = Row(
+                          children: [
+                            Expanded(child: _leftPanel(cs, orientation)),
+                            const SizedBox(width: 12),
+                            Expanded(child: _rightPanel(cs)),
+                          ],
+                        );
+
+                        return Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            children: [
+                              Expanded(child: panels),
+                              const SizedBox(height: 12),
+                              _resultsPanel(cs),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // ✅ Mobile: single scrollable page
+                      // ✅ FIX: Results should appear under the input (not after output)
+                      return Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: ListView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: EdgeInsets.only(bottom: bottomInset + 16),
+                          children: [
+                            _leftPanel(cs, orientation),
+                            const SizedBox(height: 12),
+
+                            // ✅ moved here: results directly under input
+                            _resultsPanel(cs),
+
+                            const SizedBox(height: 12),
+                            _rightPanel(cs),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        );
+      },
     );
   }
 
@@ -631,8 +640,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
-  Widget _leftPanel(ColorScheme cs) {
+  Widget _leftPanel(ColorScheme cs, Orientation orientation) {
     final showLeftSpeaker = _inputLang == Lang.mien; // ONLY when searching Mien
+
+    // ✅ Safari landscape tends to be short; reduce search box height in landscape
+    final searchBoxHeight = (orientation == Orientation.landscape)
+        ? 120.0
+        : 180.0;
 
     return Card(
       elevation: 0,
@@ -690,10 +704,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             const SizedBox(height: 6),
 
             // Search box (with clear "X" like Google)
-            // NOTE: On mobile we are in a ListView now, so avoid Expanded here.
-            // Keep the TextField tall enough to be usable.
             SizedBox(
-              height: 180,
+              height: searchBoxHeight,
               child: TextField(
                 controller: _queryCtrl,
                 focusNode: _queryFocus,
@@ -899,6 +911,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       child: SizedBox(
         height: 240,
         child: ListView.separated(
+          // ✅ Helps nested scrolls on mobile Safari
+          primary: false,
           itemCount: _results.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) {
