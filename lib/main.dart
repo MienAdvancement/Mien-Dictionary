@@ -1,33 +1,40 @@
 // lib/main.dart
 //
-// Mien Dictionary (CSV-driven) with:
-// - Google-Translate-style TWO PANEL layout
-// - startsWith-only matching (input language only)
-// - clear "X" in search box (like Google)
-// - speech-to-search mic button (dictation fills search box)
-// - speaker icon shown ONLY when Mien is on that side:
-//      * LEFT speaker only when Input=Mien
-//      * RIGHT speaker only when Output=Mien
-// - Mandarin/Cantonese shown ONLY when Output=Chinese
+// ✅ Keeps your previous app structure (speech_to_text + audioplayers + url_launcher + feedback button)
+// ✅ Keeps your JSON structure + flexible header reading
 //
-// Requires pubspec.yaml:
-// flutter:
-//   uses-material-design: true
-//   assets:
-//     - assets/words.csv
+// FIXES you asked for:
+// 1) NO pre-list before typing: empty query => results empty + helper text (no alphabet list)
+// 2) Language dropdown freedom like Google Translate:
+//    - Input can be any language
+//    - Output can be any language EXCEPT same as input
+//    - No “only Mien output” restriction
+// 3) Search improvements (incremental like Google):
+//    - Prefix matches prioritized
+//    - Contains matches allowed
+//    - Ranked results update per keystroke
+// 4) Audio behavior predictable (your rules):
+//    - INPUT-side speaker: only if Input = Mien AND selected has audio (shown under selected word)
+//    - OUTPUT-side speaker: only if Output = Mien AND selected has audio
+//    - Uses audioplayers AssetSource with robust path normalization for values like:
+//        "00001.wav", "audio/00001.wav", "assets/audio/00001.wav"
 //
-// Add dependency in pubspec.yaml:
-// dependencies:
-//   speech_to_text: ^7.3.0
-//
-// Then run: flutter pub get
+// IMPORTANT:
+// - Your pubspec.yaml assets must include:
+//     - assets/data/
+//     - assets/audio/
+// - Your audio files are .wav and stored under assets/audio/
+// - Your active JSON file:
+///    assets/data/mien_dictionary_feb8.json
 
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const MienDictionaryApp());
 
@@ -45,7 +52,7 @@ class MienDictionaryApp extends StatelessWidget {
   }
 }
 
-enum Lang { mien, english, chinese, thai }
+enum Lang { mien, english, chinese, thai, french, lao, vietnamese }
 
 extension LangLabel on Lang {
   String get label {
@@ -58,6 +65,12 @@ extension LangLabel on Lang {
         return 'Chinese';
       case Lang.thai:
         return 'Thai';
+      case Lang.french:
+        return 'French';
+      case Lang.lao:
+        return 'Lao';
+      case Lang.vietnamese:
+        return 'Vietnamese';
     }
   }
 }
@@ -66,29 +79,55 @@ class DictEntry {
   final String id;
 
   final String mien;
-  final String pos;
   final String english;
   final String chinese;
   final String thai;
+  final String french;
+  final String lao;
+  final String vietnamese;
+
+  final String noteEnglish;
+  final String noteFrench;
+  final String noteThai;
+  final String noteLao;
+  final String noteVietnamese;
+  final String noteChinese;
 
   final String mandarin;
   final String cantonese;
+
   final String example;
   final String usage;
   final String origin;
 
+  // audio filename like "00001.wav" (stored under assets/audio/)
+  final String audioMien;
+
+  // optional (older datasets)
+  final String pos;
+
   const DictEntry({
     required this.id,
     required this.mien,
-    required this.pos,
     required this.english,
     required this.chinese,
     required this.thai,
+    required this.french,
+    required this.lao,
+    required this.vietnamese,
+    required this.noteEnglish,
+    required this.noteFrench,
+    required this.noteThai,
+    required this.noteLao,
+    required this.noteVietnamese,
+    required this.noteChinese,
     required this.mandarin,
     required this.cantonese,
     required this.example,
     required this.usage,
     required this.origin,
+    required this.audioMien,
+    required this.pos,
   });
 
   String inLang(Lang lang) {
@@ -101,8 +140,35 @@ class DictEntry {
         return chinese;
       case Lang.thai:
         return thai;
+      case Lang.french:
+        return french;
+      case Lang.lao:
+        return lao;
+      case Lang.vietnamese:
+        return vietnamese;
     }
   }
+
+  String noteFor(Lang lang) {
+    switch (lang) {
+      case Lang.english:
+        return noteEnglish;
+      case Lang.french:
+        return noteFrench;
+      case Lang.thai:
+        return noteThai;
+      case Lang.lao:
+        return noteLao;
+      case Lang.vietnamese:
+        return noteVietnamese;
+      case Lang.chinese:
+        return noteChinese;
+      case Lang.mien:
+        return '';
+    }
+  }
+
+  bool get hasMienAudio => audioMien.trim().isNotEmpty;
 }
 
 class DictionaryHomePage extends StatefulWidget {
@@ -113,7 +179,19 @@ class DictionaryHomePage extends StatefulWidget {
 }
 
 class _DictionaryHomePageState extends State<DictionaryHomePage> {
-  // Languages
+  // =========================
+  // CONFIG
+  // =========================
+  static const String kDictAssetPath = 'assets/data/mien_dictionary_feb8.json';
+
+  // ========= FEEDBACK (Google Form) =========
+  static const String kFeedbackPrefillBaseUrl =
+      'PASTE_YOUR_GOOGLE_FORM_PREFILL_URL_HERE';
+
+  // Audio player (assets/audio/<filename>)
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
+  // Languages (Google-Translate-style freedom: all languages allowed except same-language pairing)
   Lang _inputLang = Lang.english;
   Lang _outputLang = Lang.mien;
 
@@ -133,21 +211,16 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   bool _isListening = false;
   String? _sttStatus;
 
-  // IMPORTANT: session token to ignore late onResult callbacks (Chrome can deliver late)
+  // IMPORTANT: session token to ignore late onResult callbacks
   int _listenSession = 0;
 
   @override
   void initState() {
     super.initState();
-
-    // filter results when text changes
     _queryCtrl.addListener(_applyFilter);
-
-    // refresh UI so the clear "X" appears/disappears immediately
     _queryCtrl.addListener(() => setState(() {}));
-
-    _enforceOutputRules();
-    _loadCsv();
+    _enforceDifferentLanguages();
+    _loadJson();
   }
 
   @override
@@ -155,62 +228,110 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     _queryCtrl.dispose();
     _queryFocus.dispose();
     _stt.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
   // -------------------------
-  // Output language rules (your requirement)
+  // Google-Translate-style language freedom
   // -------------------------
+  List<Lang> get _allLangs => Lang.values;
+
   List<Lang> _allowedOutputsFor(Lang input) {
-    // If input is Mien -> output can be English/Chinese/Thai
-    // If input is English/Chinese/Thai -> output can only be Mien
-    if (input == Lang.mien) {
-      return const [Lang.english, Lang.chinese, Lang.thai];
-    }
-    return const [Lang.mien];
+    // allow everything except same-language pairing
+    return _allLangs.where((l) => l != input).toList();
   }
 
-  void _enforceOutputRules() {
-    final allowed = _allowedOutputsFor(_inputLang);
-    if (!allowed.contains(_outputLang)) {
-      _outputLang = allowed.first;
+  void _enforceDifferentLanguages() {
+    if (_outputLang == _inputLang) {
+      final allowed = _allowedOutputsFor(_inputLang);
+      _outputLang = allowed.isEmpty ? _outputLang : allowed.first;
     }
   }
 
   // -------------------------
-  // Excel/Clipboard cleanup (important for paste matching)
+  // Swap box
+  // -------------------------
+  void _swapLanguages() {
+    setState(() {
+      final oldInput = _inputLang;
+      final oldOutput = _outputLang;
+      _inputLang = oldOutput;
+      _outputLang = oldInput;
+      _enforceDifferentLanguages();
+      _applyFilter();
+    });
+  }
+
+  Widget _swapBox(ColorScheme cs) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: IconButton(
+        tooltip: 'Swap input/output',
+        iconSize: 28,
+        icon: const Icon(Icons.swap_horiz),
+        onPressed: _swapLanguages,
+      ),
+    );
+  }
+
+  // -------------------------
+  // Matching cleanup
   // -------------------------
   String _cleanForMatch(String s, {required Lang lang}) {
     var t = s;
-
-    // Remove BOM/zero-width chars from Excel/clipboard
     t = t.replaceAll(RegExp(r'[\uFEFF\u200B\u200C\u200D]'), '');
-
-    // NBSP -> normal space
     t = t.replaceAll('\u00A0', ' ');
-
-    // Remove leading apostrophe Excel sometimes adds
     t = t.replaceFirst(RegExp(r"^\s*'"), '');
-
-    // Trim and collapse whitespace/newlines
     t = t.trim();
     t = t.replaceAll(RegExp(r'\s+'), ' ');
-
-    // Case-fold for English and Mien romanization
-    if (lang == Lang.english || lang == Lang.mien) {
-      t = t.toLowerCase();
-    }
-
+    // keep your old rule: only lower-case for English + Mien
+    if (lang == Lang.english || lang == Lang.mien) t = t.toLowerCase();
     return t;
   }
 
   // -------------------------
-  // startsWith-only search (your requirement)
+  // Search: prefix prioritized, contains allowed, ranked
   // -------------------------
+  int _scoreTerm(String term, String q) {
+    // Exact > startsWith > word-boundary contains > contains
+    if (term == q) return 5000;
+    if (term.startsWith(q))
+      return 3500 + (800 - _cap(term.length)); // shorter terms bubble up
+    if (_wordBoundaryContains(term, q)) return 2000;
+    if (term.contains(q)) return 1200;
+
+    // Optional: ignore spaces/underscores for compound consistency
+    final t2 = term.replaceAll(RegExp(r'[\s_]+'), '');
+    final q2 = q.replaceAll(RegExp(r'[\s_]+'), '');
+    if (t2 == q2) return 2600;
+    if (t2.startsWith(q2)) return 1600;
+    if (t2.contains(q2)) return 1100;
+
+    return 0;
+  }
+
+  bool _wordBoundaryContains(String term, String q) {
+    final pattern = RegExp(
+      r'(^|[^a-z0-9])' + RegExp.escape(q),
+      caseSensitive: false,
+    );
+    return pattern.hasMatch(term);
+  }
+
+  int _cap(int v) => v > 800 ? 800 : v;
+
   void _applyFilter() {
     if (_loading) return;
 
     final q = _cleanForMatch(_queryCtrl.text, lang: _inputLang);
+
+    // ✅ No pre-list before typing
     if (q.isEmpty) {
       setState(() {
         _results = const [];
@@ -219,16 +340,28 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       return;
     }
 
-    final matches =
-        _entries.where((e) {
-          final term = _cleanForMatch(e.inLang(_inputLang), lang: _inputLang);
-          return term.startsWith(q);
-        }).toList()..sort((a, b) {
-          final at = _cleanForMatch(a.inLang(_inputLang), lang: _inputLang);
-          final bt = _cleanForMatch(b.inLang(_inputLang), lang: _inputLang);
-          final lenCmp = at.length.compareTo(bt.length);
-          return lenCmp != 0 ? lenCmp : at.compareTo(bt);
-        });
+    final scored = <_ScoredEntry>[];
+
+    for (final e in _entries) {
+      final term = _cleanForMatch(e.inLang(_inputLang), lang: _inputLang);
+      if (term.isEmpty) continue;
+
+      final score = _scoreTerm(term, q);
+      if (score > 0) scored.add(_ScoredEntry(e, score, term));
+    }
+
+    scored.sort((a, b) {
+      final s = b.score.compareTo(a.score);
+      if (s != 0) return s;
+
+      // shorter wins, then alpha
+      final len = a.term.length.compareTo(b.term.length);
+      if (len != 0) return len;
+
+      return a.term.compareTo(b.term);
+    });
+
+    final matches = scored.map((x) => x.entry).take(400).toList();
 
     setState(() {
       _results = matches;
@@ -237,84 +370,159 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   // -------------------------
-  // CSV loading/parsing
-  // Header:
-  // Mien,Part of Speech,English,Chinese,Thai,Mandarin,Cantonese,Example,Usage,Origin
+  // JSON loading/parsing
   // -------------------------
-  Future<void> _loadCsv() async {
+  Future<void> _loadJson() async {
     setState(() {
       _loading = true;
       _loadError = null;
     });
 
     try {
-      final csvText = await rootBundle.loadString('assets/words.csv');
-      final rows = _parseCsv(csvText);
+      final jsonText = await rootBundle.loadString(kDictAssetPath);
+      final decoded = jsonDecode(jsonText);
 
-      if (rows.isEmpty) throw Exception('CSV file is empty.');
-      final header = rows.first.map((c) => c.trim()).toList();
-
-      final index = <String, int>{};
-      for (var i = 0; i < header.length; i++) {
-        index[header[i]] = i;
+      if (decoded is! List) {
+        throw Exception(
+          'JSON root must be a List. Got: ${decoded.runtimeType}',
+        );
       }
 
-      String cell(List<String> r, String col) {
-        final i = index[col];
-        if (i == null || i < 0 || i >= r.length) return '';
-        return r[i];
+      String getStr(Map<String, dynamic> m, List<String> keys) {
+        final lower = {for (final e in m.entries) e.key.toLowerCase(): e.value};
+        for (final k in keys) {
+          final v = lower[k.toLowerCase()];
+          if (v != null) {
+            final t = v.toString().trim();
+            if (t.isNotEmpty) return t;
+          }
+        }
+        return '';
       }
+
+      int skippedAllEmpty = 0;
+      int skippedBadRow = 0;
 
       final entries = <DictEntry>[];
-      for (var ri = 1; ri < rows.length; ri++) {
-        final r = rows[ri];
-        if (r.every((c) => c.trim().isEmpty)) continue;
 
-        final mien = cell(r, 'Mien').trim();
-        final pos = cell(r, 'Part of Speech').trim();
-        final english = cell(r, 'English').trim();
-        final chinese = cell(r, 'Chinese').trim();
-        final thai = cell(r, 'Thai').trim();
+      for (var i = 0; i < decoded.length; i++) {
+        final row = decoded[i];
 
-        final mandarin = cell(r, 'Mandarin').trim();
-        final cantonese = cell(r, 'Cantonese').trim();
-        final example = cell(r, 'Example').trim();
-        final usage = cell(r, 'Usage').trim();
-        final origin = cell(r, 'Origin').trim();
+        if (row is! Map) {
+          skippedBadRow++;
+          continue;
+        }
+
+        final m = row.map((k, v) => MapEntry(k.toString(), v));
+
+        final mien = getStr(m, ['Mien', 'mien']);
+        final english = getStr(m, ['English', 'english']);
+        final chinese = getStr(m, ['Chinese', 'chinese']);
+        final thai = getStr(m, ['Thai', 'thai']);
+        final french = getStr(m, ['French', 'french']);
+        final lao = getStr(m, ['Lao', 'lao']);
+        final vietnamese = getStr(m, ['Vietnamese', 'vietnamese']);
+
+        final noteEnglish = getStr(m, [
+          'Note (English)',
+          'Note English',
+          'note_english',
+        ]);
+        final noteFrench = getStr(m, [
+          'Note (French)',
+          'Note French',
+          'note_french',
+        ]);
+        final noteThai = getStr(m, ['Note (Thai)', 'Note Thai', 'note_thai']);
+        final noteLao = getStr(m, ['Note (Lao)', 'Note Lao', 'note_lao']);
+        final noteVietnamese = getStr(m, [
+          'Note (Vietnamese)',
+          'Note Vietnamese',
+          'note_vietnamese',
+        ]);
+        final noteChinese = getStr(m, [
+          'Note (Chinese)',
+          'Note Chinese',
+          'note_chinese',
+        ]);
+
+        final mandarin = getStr(m, ['Mandarin', 'mandarin']);
+        final cantonese = getStr(m, ['Cantonese', 'cantonese']);
+        final example = getStr(m, ['Example', 'example']);
+        final usage = getStr(m, ['Usage', 'usage']);
+        final origin = getStr(m, ['Origin', 'origin']);
+
+        final audioMien = getStr(m, [
+          'Audio (Mien)',
+          'Audio(Mien)',
+          'Audio Mien',
+          'audio_mien',
+          'audio (mien)',
+          'audio',
+        ]);
+
+        final pos = getStr(m, [
+          'Part of Speech',
+          'Part of Sp',
+          'Part of sp',
+          'Part of Sp.',
+          'POS',
+          'pos',
+        ]);
 
         if (mien.isEmpty &&
             english.isEmpty &&
             chinese.isEmpty &&
-            thai.isEmpty) {
+            thai.isEmpty &&
+            french.isEmpty &&
+            lao.isEmpty &&
+            vietnamese.isEmpty) {
+          skippedAllEmpty++;
           continue;
         }
 
-        final idSource = '$mien|$english|$pos|$ri';
+        final idSource = '$mien|$english|$pos|$i';
         final id = base64Url.encode(utf8.encode(idSource)).replaceAll('=', '');
 
         entries.add(
           DictEntry(
             id: id,
             mien: mien,
-            pos: pos,
             english: english,
             chinese: chinese,
             thai: thai,
+            french: french,
+            lao: lao,
+            vietnamese: vietnamese,
+            noteEnglish: noteEnglish,
+            noteFrench: noteFrench,
+            noteThai: noteThai,
+            noteLao: noteLao,
+            noteVietnamese: noteVietnamese,
+            noteChinese: noteChinese,
             mandarin: mandarin,
             cantonese: cantonese,
             example: example,
             usage: usage,
             origin: origin,
+            audioMien: audioMien,
+            pos: pos,
           ),
         );
       }
+
+      debugPrint('Loaded JSON from: $kDictAssetPath');
+      debugPrint('JSON rows total: ${decoded.length}');
+      debugPrint('Entries kept: ${entries.length}');
+      debugPrint('Skipped (all empty main fields): $skippedAllEmpty');
+      debugPrint('Skipped (bad row type): $skippedBadRow');
 
       setState(() {
         _entries = entries;
         _loading = false;
       });
 
-      _enforceOutputRules();
+      _enforceDifferentLanguages();
       _applyFilter();
     } catch (e) {
       setState(() {
@@ -324,88 +532,31 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     }
   }
 
-  /// Robust CSV parser:
-  /// - supports commas
-  /// - supports quoted fields with commas/newlines
-  /// - supports escaped quotes ("")
-  List<List<String>> _parseCsv(String input) {
-    final rows = <List<String>>[];
-    final row = <String>[];
-    final field = StringBuffer();
-
-    var inQuotes = false;
-
-    for (var i = 0; i < input.length; i++) {
-      final ch = input[i];
-
-      if (ch == '"') {
-        if (inQuotes) {
-          final nextIsQuote = (i + 1 < input.length) && input[i + 1] == '"';
-          if (nextIsQuote) {
-            field.write('"');
-            i++;
-          } else {
-            inQuotes = false;
-          }
-        } else {
-          inQuotes = true;
-        }
-        continue;
-      }
-
-      if (!inQuotes && ch == ',') {
-        row.add(field.toString());
-        field.clear();
-        continue;
-      }
-
-      if (!inQuotes && (ch == '\n' || ch == '\r')) {
-        if (ch == '\r' && i + 1 < input.length && input[i + 1] == '\n') {
-          i++;
-        }
-        row.add(field.toString());
-        field.clear();
-
-        if (row.any((c) => c.isNotEmpty)) {
-          rows.add(List<String>.from(row));
-        }
-        row.clear();
-        continue;
-      }
-
-      field.write(ch);
-    }
-
-    row.add(field.toString());
-    if (row.any((c) => c.isNotEmpty)) {
-      rows.add(List<String>.from(row));
-    }
-
-    return rows;
-  }
-
   // -------------------------
-  // Speech-to-text (mic -> fills search box)
+  // Speech-to-text
   // -------------------------
   String _sttLocaleFor(Lang lang) {
     switch (lang) {
       case Lang.english:
         return 'en_US';
+      case Lang.french:
+        return 'fr_FR';
+      case Lang.lao:
+        return 'lo_LA';
       case Lang.chinese:
         return 'zh_CN';
       case Lang.thai:
         return 'th_TH';
+      case Lang.vietnamese:
+        return 'vi_VN';
       case Lang.mien:
-        // Mien STT is usually not supported; use English to capture romanized letters.
         return 'en_US';
     }
   }
 
   Future<void> _stopDictationSession({String? status}) async {
-    _listenSession++; // invalidate any late callbacks
-    if (_isListening) {
-      await _stt.stop();
-    }
+    _listenSession++;
+    if (_isListening) await _stt.stop();
     if (!mounted) return;
     setState(() {
       _isListening = false;
@@ -437,11 +588,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final localeId = _sttLocaleFor(_inputLang);
 
-    // New session token for this listen call
     _listenSession++;
     final mySession = _listenSession;
 
-    // Clear at start so old word never "sticks"
     _queryCtrl.clear();
     _queryFocus.requestFocus();
 
@@ -455,25 +604,127 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       partialResults: true,
       listenMode: stt.ListenMode.search,
       onResult: (res) {
-        // Ignore late results from previous sessions (e.g., after pressing X)
         if (mySession != _listenSession) return;
 
         final txt = res.recognizedWords.trim();
         if (txt.isEmpty) return;
 
-        // Optional: ignore very short junk partials (helps with "tia." style noise)
-        if (!res.finalResult && txt.length < 3) return;
+        // Keep your old “don’t spam with tiny partials”
+        if (!res.finalResult && txt.length < 2) return;
 
-        // CHROME-FRIENDLY: update textbox on partial results too
         _queryCtrl.text = txt;
         _queryCtrl.selection = TextSelection.collapsed(offset: txt.length);
 
-        // If final, stop listening UI state
-        if (res.finalResult) {
-          setState(() => _isListening = false);
-        }
+        if (res.finalResult) setState(() => _isListening = false);
       },
     );
+  }
+
+  // -------------------------
+  // Audio helpers (WAV + Chrome-safe asset path normalization)
+  // -------------------------
+  String _normalizeAudioToAssetSourcePath(String raw) {
+    // We must end with: "audio/<filename.wav>" for AssetSource()
+    var s = raw.trim();
+    s = s.replaceAll('\\', '/');
+    if (s.isEmpty) return '';
+
+    // Strip accidental prefixes
+    if (s.startsWith('assets/'))
+      s = s.substring('assets/'.length); // "audio/xxx.wav" or "audio/..."
+    if (s.startsWith('audio/')) {
+      // ok
+      return s;
+    }
+
+    // If they stored "assets/audio/xxx.wav" -> after stripping "assets/" becomes "audio/xxx.wav"
+    // If they stored only filename -> add "audio/"
+    if (!s.contains('/')) {
+      return 'audio/$s';
+    }
+
+    // If they stored "something/audio/xxx.wav" (rare), try to keep only after last "audio/"
+    final idx = s.lastIndexOf('audio/');
+    if (idx != -1) {
+      return s.substring(idx);
+    }
+
+    // Otherwise, assume already relative from assets root
+    return s;
+  }
+
+  Future<void> _playMienAudioIfAvailable(DictEntry e) async {
+    if (!e.hasMienAudio) {
+      _toast('No audio for this entry.');
+      return;
+    }
+
+    final assetPath = _normalizeAudioToAssetSourcePath(e.audioMien);
+    if (assetPath.isEmpty) {
+      _toast('No audio for this entry.');
+      return;
+    }
+
+    try {
+      // User click => OK for Chrome autoplay policy.
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource(assetPath));
+    } catch (err) {
+      _toast('Audio play failed: $err');
+    }
+  }
+
+  // -------------------------
+  // Feedback helpers
+  // -------------------------
+  bool get _feedbackConfigured =>
+      kFeedbackPrefillBaseUrl.isNotEmpty &&
+      !kFeedbackPrefillBaseUrl.contains(
+        'PASTE_YOUR_GOOGLE_FORM_PREFILL_URL_HERE',
+      );
+
+  String _safeOneLine(String s) =>
+      s.replaceAll('\n', ' ').replaceAll('\r', ' ').trim();
+
+  Uri _buildFeedbackUri(DictEntry e) {
+    final base = Uri.parse(kFeedbackPrefillBaseUrl);
+
+    final ctx = <String, String>{
+      'entryId': e.id,
+      'mien': _safeOneLine(e.mien),
+      'inputLang': _inputLang.label,
+      'outputLang': _outputLang.label,
+      'inputText': _safeOneLine(e.inLang(_inputLang)),
+      'outputText': _safeOneLine(e.inLang(_outputLang)),
+      'pos': _safeOneLine(e.pos),
+      'note': _safeOneLine(e.noteFor(_outputLang)),
+      'example': _safeOneLine(e.example),
+      'usage': _safeOneLine(e.usage),
+      'origin': _safeOneLine(e.origin),
+      'audioMien': _safeOneLine(e.audioMien),
+    };
+
+    final merged = <String, String>{...base.queryParameters, ...ctx};
+    return base.replace(queryParameters: merged);
+  }
+
+  Future<void> _openFeedbackFormForSelected() async {
+    final e = _selected;
+    if (e == null) {
+      _toast('Select an entry first.');
+      return;
+    }
+    if (!_feedbackConfigured) {
+      _toast(
+        'Feedback form not configured yet. Paste your prefill URL in main.dart.',
+      );
+      return;
+    }
+
+    final uri = _buildFeedbackUri(e);
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) _toast('Could not open feedback form.');
   }
 
   // -------------------------
@@ -484,24 +735,15 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ✅ Mandarin/Cantonese ONLY when output is Chinese
-  String _metaLines(DictEntry e) {
+  String _exampleUsageOriginLines(DictEntry e) {
     final parts = <String>[];
 
-    // Always allowed (language-neutral metadata)
+    final note = e.noteFor(_outputLang).trim();
+    if (note.isNotEmpty) parts.add('Note: $note');
+
     if (e.example.trim().isNotEmpty) parts.add('Example: ${e.example.trim()}');
     if (e.usage.trim().isNotEmpty) parts.add('Usage: ${e.usage.trim()}');
     if (e.origin.trim().isNotEmpty) parts.add('Origin: ${e.origin.trim()}');
-
-    // Only when output = Chinese
-    if (_outputLang == Lang.chinese) {
-      if (e.mandarin.trim().isNotEmpty) {
-        parts.add('Mandarin: ${e.mandarin.trim()}');
-      }
-      if (e.cantonese.trim().isNotEmpty) {
-        parts.add('Cantonese: ${e.cantonese.trim()}');
-      }
-    }
 
     return parts.join('\n');
   }
@@ -512,11 +754,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    // ✅ iPhone Safari keyboard/viewport helper
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    // ✅ iPhone Safari rotation stability
     return OrientationBuilder(
       builder: (context, orientation) {
         return Scaffold(
@@ -525,8 +764,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             title: const Text('Mien Dictionary'),
             actions: [
               IconButton(
-                tooltip: 'Reload CSV',
-                onPressed: _loadCsv,
+                tooltip: 'Reload JSON',
+                onPressed: _loadJson,
                 icon: const Icon(Icons.refresh),
               ),
               IconButton(
@@ -538,13 +777,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           ),
           body: SafeArea(
             child: _loading
-                ? Center(
+                ? const Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         CircularProgressIndicator(),
                         SizedBox(height: 12),
-                        Text('Loading assets/words.csv…'),
                       ],
                     ),
                   )
@@ -555,29 +793,24 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                       final wide = c.maxWidth >= 900;
 
                       if (wide) {
-                        // Desktop/tablet: keep your original layout
-                        final panels = Row(
-                          children: [
-                            Expanded(child: _leftPanel(cs, orientation)),
-                            const SizedBox(width: 12),
-                            Expanded(child: _rightPanel(cs)),
-                          ],
-                        );
-
                         return Padding(
                           padding: const EdgeInsets.all(12),
-                          child: Column(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(child: panels),
-                              const SizedBox(height: 12),
-                              _resultsPanel(cs),
+                              Expanded(child: _leftPanel(cs, orientation)),
+                              const SizedBox(width: 10),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 18),
+                                child: _swapBox(cs),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(child: _rightPanel(cs)),
                             ],
                           ),
                         );
                       }
 
-                      // ✅ Mobile: single scrollable page
-                      // ✅ FIX: Results should appear under the input (not after output)
                       return Padding(
                         padding: const EdgeInsets.all(12),
                         child: ListView(
@@ -586,12 +819,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                           padding: EdgeInsets.only(bottom: bottomInset + 16),
                           children: [
                             _leftPanel(cs, orientation),
-                            const SizedBox(height: 12),
-
-                            // ✅ moved here: results directly under input
-                            _resultsPanel(cs),
-
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.center,
+                              child: _swapBox(cs),
+                            ),
+                            const SizedBox(height: 10),
                             _rightPanel(cs),
                           ],
                         ),
@@ -619,7 +852,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Could not load CSV',
+                'Could not load JSON',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
@@ -627,10 +860,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               const SizedBox(height: 12),
               Text(
                 'Check:\n'
-                '1) pubspec.yaml includes assets/words.csv\n'
-                '2) file exists at assets/words.csv\n'
-                '3) run flutter pub get\n'
-                '4) CSV saved as UTF-8 (Excel: CSV UTF-8)',
+                '1) pubspec.yaml includes assets/data/ (or $kDictAssetPath)\n'
+                '2) file exists at $kDictAssetPath\n'
+                '3) flutter pub get\n'
+                '4) JSON root is a List of row objects',
                 style: TextStyle(color: cs.onSurfaceVariant),
               ),
             ],
@@ -640,13 +873,15 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
+  // LEFT PANEL
   Widget _leftPanel(ColorScheme cs, Orientation orientation) {
-    final showLeftSpeaker = _inputLang == Lang.mien; // ONLY when searching Mien
+    final selected = _selected;
+    final showInputMienSpeaker =
+        (_inputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
 
-    // ✅ Safari landscape tends to be short; reduce search box height in landscape
-    final searchBoxHeight = (orientation == Orientation.landscape)
-        ? 120.0
-        : 180.0;
+    final inputBoxHeight = (orientation == Orientation.landscape)
+        ? 360.0
+        : 420.0;
 
     return Card(
       elevation: 0,
@@ -662,16 +897,16 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             _langRow(
               title: 'Input',
               value: _inputLang,
-              items: Lang.values,
+              items: _allLangs,
               onChanged: (v) {
-                setState(() => _inputLang = v);
-                _enforceOutputRules();
-                _applyFilter();
+                setState(() {
+                  _inputLang = v;
+                  _enforceDifferentLanguages();
+                  _applyFilter();
+                });
               },
             ),
             const SizedBox(height: 6),
-
-            // Speak-to-search mic button
             Row(
               children: [
                 IconButton(
@@ -701,64 +936,87 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
               ],
             ),
-            const SizedBox(height: 6),
-
-            // Search box (with clear "X" like Google)
+            const SizedBox(height: 10),
             SizedBox(
-              height: searchBoxHeight,
-              child: TextField(
-                controller: _queryCtrl,
-                focusNode: _queryFocus,
-
-                // ✅ iPhone Safari: ensure focused field can scroll above keyboard
-                scrollPadding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 120,
+              height: inputBoxHeight,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: cs.outlineVariant),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: InputDecoration(
-                  hintText:
-                      'Type/paste in ${_inputLang.label} (startsWith only)…',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  isDense: true,
-
-                  // Clear "X" (also cancels dictation!)
-                  suffixIcon: _queryCtrl.text.trim().isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.clear),
-                          onPressed: _clearSearchAndCancelDictation,
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _queryCtrl,
+                      focusNode: _queryFocus,
+                      decoration: InputDecoration(
+                        hintText:
+                            'Search ${_inputLang.label} (prefix + contains)…',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
+                        isDense: true,
+                        suffixIcon: _queryCtrl.text.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Clear',
+                                icon: const Icon(Icons.clear),
+                                onPressed: _clearSearchAndCancelDictation,
+                              ),
+                      ),
+                    ),
+                    if (selected != null) ...[
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          selected.inLang(_inputLang).trim().isEmpty
+                              ? '—'
+                              : selected.inLang(_inputLang).trim(),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // ✅ INPUT-side Mien audio: only when Input = Mien AND selected has audio
+                      if (showInputMienSpeaker) ...[
+                        const SizedBox(height: 6),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: IconButton(
+                            tooltip: 'Play Mien audio',
+                            onPressed: () =>
+                                _playMienAudioIfAvailable(selected),
+                            icon: Icon(Icons.volume_up, color: cs.primary),
+                          ),
+                        ),
+                      ],
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          'Matches: ${_results.length}',
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'prefix + contains',
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Divider(height: 1),
+                    const SizedBox(height: 6),
+                    Expanded(child: _buildMatchesList(cs)),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-
-            // Bottom row: loaded count + optional LEFT speaker
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Loaded: ${_entries.length} entries • Matching: startsWith only',
-                    style: TextStyle(color: cs.onSurfaceVariant),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (showLeftSpeaker) ...[
-                  IconButton(
-                    tooltip: kIsWeb
-                        ? 'Mien pronunciation (input) — audio later'
-                        : 'Mien pronunciation (input) — audio later',
-                    onPressed: () => _toast('Audio will be added later.'),
-                    icon: Icon(Icons.volume_up, color: cs.primary),
-                  ),
-                ],
-              ],
             ),
           ],
         ),
@@ -766,6 +1024,60 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
+  Widget _buildMatchesList(ColorScheme cs) {
+    final q = _cleanForMatch(_queryCtrl.text, lang: _inputLang);
+
+    if (q.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(10),
+        child: Text(
+          'Type/paste (or speak) above.\n\nMatches will appear here.',
+          style: TextStyle(color: cs.onSurfaceVariant),
+        ),
+      );
+    }
+
+    if (_results.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(10),
+        child: Text(
+          'No matches for “$q”.',
+          style: TextStyle(color: cs.onSurfaceVariant),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      itemCount: _results.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final e = _results[i];
+        final isSel = _selected?.id == e.id;
+
+        final inputText = e.inLang(_inputLang);
+        final previewMien = e.mien.trim();
+
+        return ListTile(
+          dense: true,
+          selected: isSel,
+          onTap: () => setState(() => _selected = e),
+          title: Text(
+            inputText.isEmpty ? '—' : inputText,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            previewMien.isEmpty ? '—' : previewMien,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      },
+    );
+  }
+
+  // RIGHT PANEL + feedback button
   Widget _rightPanel(ColorScheme cs) {
     final allowed = _allowedOutputsFor(_inputLang);
     final selected = _selected;
@@ -773,9 +1085,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     final inputText = selected?.inLang(_inputLang) ?? '';
     final outputText = selected?.inLang(_outputLang) ?? '';
 
+    // ✅ OUTPUT-side Mien audio: only when Output = Mien AND selected has audio
     final showRightSpeaker =
-        _outputLang == Lang.mien; // ONLY when output is Mien
-    final meta = (selected == null) ? '' : _metaLines(selected);
+        (_outputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
+
+    final exu = (selected == null) ? '' : _exampleUsageOriginLines(selected);
 
     return Card(
       elevation: 0,
@@ -795,10 +1109,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               onChanged: (v) => setState(() => _outputLang = v),
             ),
             const SizedBox(height: 10),
-
-            // Output display box (Google style)
             SizedBox(
-              height: 240,
+              height: 300,
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -807,135 +1119,123 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 ),
                 child: selected == null
                     ? Text(
-                        'No selection.\n\nType on the left to search.',
+                        'No selection.\n\nSearch on the left and tap a result.',
                         style: TextStyle(color: cs.onSurfaceVariant),
                       )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            inputText.isEmpty ? '—' : inputText,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: cs.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            outputText.isEmpty ? '—' : outputText,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          if (selected.pos.trim().isNotEmpty)
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                             Text(
-                              selected.pos,
-                              style: TextStyle(color: cs.onSurfaceVariant),
-                            ),
-                          if (meta.trim().isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: cs.surfaceContainerHighest,
-                                borderRadius: BorderRadius.circular(12),
+                              inputText.isEmpty ? '—' : inputText,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: cs.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
                               ),
-                              child: Text(
-                                meta,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              outputText.isEmpty ? '—' : outputText,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            if (selected.pos.trim().isNotEmpty)
+                              Text(
+                                selected.pos,
                                 style: TextStyle(color: cs.onSurfaceVariant),
                               ),
-                            ),
+
+                            // Mandarin/Cantonese only when output is Chinese
+                            if (_outputLang == Lang.chinese) ...[
+                              if (selected.mandarin.trim().isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Mandarin: ${selected.mandarin.trim()}',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              ],
+                              if (selected.cantonese.trim().isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Cantonese: ${selected.cantonese.trim()}',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              ],
+                            ],
+
+                            if (showRightSpeaker) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Play Mien audio',
+                                    onPressed: () =>
+                                        _playMienAudioIfAvailable(selected),
+                                    icon: Icon(
+                                      Icons.volume_up,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _normalizeAudioToAssetSourcePath(
+                                        selected.audioMien,
+                                      ),
+                                      style: TextStyle(
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
               ),
             ),
             const SizedBox(height: 10),
 
-            // RIGHT speaker only when Output=Mien
-            if (showRightSpeaker)
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: kIsWeb
-                        ? 'Mien pronunciation (output) — audio later'
-                        : 'Mien pronunciation (output) — audio later',
-                    onPressed: () => _toast('Audio will be added later.'),
-                    icon: Icon(Icons.volume_up, color: cs.primary),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Mien pronunciation (output).',
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+            // Feedback button
+            SizedBox(
+              height: 44,
+              child: OutlinedButton.icon(
+                onPressed: _openFeedbackFormForSelected,
+                icon: const Icon(Icons.feedback_outlined),
+                label: Text(
+                  _feedbackConfigured
+                      ? 'Suggest correction'
+                      : 'Suggest correction (configure form URL)',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            if (selected != null && exu.trim().isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(exu, style: TextStyle(color: cs.onSurfaceVariant)),
+              )
+            else
+              Text(
+                selected == null
+                    ? 'Note/Example/Usage/Origin will appear here.'
+                    : 'No Note/Example/Usage/Origin for this entry.',
+                style: TextStyle(color: cs.onSurfaceVariant),
               ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _resultsPanel(ColorScheme cs) {
-    final q = _cleanForMatch(_queryCtrl.text, lang: _inputLang);
-
-    if (q.isEmpty) {
-      return _bottomCard(
-        cs,
-        child: Text(
-          'Type/paste (or speak) on the left to search. Results must START WITH your input.',
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
-      );
-    }
-
-    if (_results.isEmpty) {
-      return _bottomCard(
-        cs,
-        child: Text(
-          'No matches for “$q”. (startsWith-only is strict)',
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
-      );
-    }
-
-    return _bottomCard(
-      cs,
-      child: SizedBox(
-        height: 240,
-        child: ListView.separated(
-          // ✅ Helps nested scrolls on mobile Safari
-          primary: false,
-          itemCount: _results.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) {
-            final e = _results[i];
-            final isSel = _selected?.id == e.id;
-
-            final inputText = e.inLang(_inputLang);
-            final outputText = e.inLang(_outputLang);
-
-            return ListTile(
-              selected: isSel,
-              onTap: () => setState(() => _selected = e),
-              title: Text(
-                inputText.isEmpty ? '—' : inputText,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(
-                '${outputText.isEmpty ? '—' : outputText}   •   ${e.pos}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            );
-          },
         ),
       ),
     );
@@ -953,7 +1253,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         const SizedBox(width: 10),
         Expanded(
           child: DropdownButtonFormField<Lang>(
-            initialValue: value,
+            value: value,
             items: items
                 .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
                 .toList(),
@@ -976,15 +1276,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       ],
     );
   }
+}
 
-  Widget _bottomCard(ColorScheme cs, {required Widget child}) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: cs.outlineVariant),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(padding: const EdgeInsets.all(14), child: child),
-    );
-  }
+class _ScoredEntry {
+  final DictEntry entry;
+  final int score;
+  final String term;
+  _ScoredEntry(this.entry, this.score, this.term);
 }
