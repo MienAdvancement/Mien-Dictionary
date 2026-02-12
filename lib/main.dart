@@ -182,7 +182,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // =========================
   // CONFIG
   // =========================
-  static const String kDictAssetPath = 'assets/data/mien_dictionary_feb8.json';
+  static const String kDictAssetPath = 'assets/data/mien_dictionary_feb12.json';
 
   // ========= FEEDBACK (Google Form) =========
   static const String kFeedbackPrefillBaseUrl =
