@@ -33,7 +33,6 @@
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -47,7 +46,7 @@ class MienDictionaryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mien Dictionary',
+      title: 'Faan Mienh Waac (Mien Translation)',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.teal),
       home: const DictionaryHomePage(),
@@ -189,7 +188,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
   // ========= FEEDBACK (Google Form) =========
   static const String kFeedbackPrefillBaseUrl =
-      'PASTE_YOUR_GOOGLE_FORM_PREFILL_URL_HERE';
+      'https://docs.google.com/forms/d/e/1FAIpQLSeTxlhmNZkZXR6nHarKuuLeBd14E4S9BRvKUU4LCOxJi5mMSg/viewform?usp=header';
 
   // ========= FOOTER TEXT =========
   static const String kFooterLine1 =
@@ -689,11 +688,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // Feedback helpers
   // -------------------------
   bool get _feedbackConfigured =>
-      kFeedbackPrefillBaseUrl.isNotEmpty &&
-      !kFeedbackPrefillBaseUrl.contains(
-        'PASTE_YOUR_GOOGLE_FORM_PREFILL_URL_HERE',
-      );
-
+      kFeedbackPrefillBaseUrl.trim().startsWith('https://');
   String _safeOneLine(String s) =>
       s.replaceAll('\n', ' ').replaceAll('\r', ' ').trim();
 
@@ -720,20 +715,14 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   Future<void> _openFeedbackFormForSelected() async {
-    final e = _selected;
-    if (e == null) {
-      _toast('Select an entry first.');
-      return;
-    }
     if (!_feedbackConfigured) {
       _toast(
-        'Feedback form not configured yet. Paste your prefill URL in main.dart.',
+        'Feedback form not configured yet. Paste your responder link in main.dart.',
       );
       return;
     }
 
-    final uri = _buildFeedbackUri(e);
-
+    final uri = Uri.parse(kFeedbackPrefillBaseUrl);
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok) _toast('Could not open feedback form.');
   }
@@ -790,7 +779,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         return Scaffold(
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
-            title: const Text('Mien Dictionary'),
+            title: const Text('Faan Mienh Waac (Mien Translation)'),
             actions: [
               IconButton(
                 tooltip: 'Reload JSON',
@@ -808,7 +797,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 onPressed: () {
                   showAboutDialog(
                     context: context,
-                    applicationName: 'Mien Dictionary',
+                    applicationName: 'Faan Mienh Waac (Mien Translation)',
                     applicationVersion: 'Feb 12 Edition',
                     children: const [
                       SizedBox(height: 12),
@@ -1263,8 +1252,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 icon: const Icon(Icons.feedback_outlined),
                 label: Text(
                   _feedbackConfigured
-                      ? 'Suggest correction'
-                      : 'Suggest correction (configure form URL)',
+                      ? 'Feedback and Suggestion'
+                      : 'Feedback and Suggestion',
                 ),
               ),
             ),
