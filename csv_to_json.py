@@ -1,8 +1,8 @@
 import csv
 import json
 
-CSV_PATH = r"assets/data/mien_dictionary_feb8.csv"
-JSON_PATH = r"assets/data/mien_dictionary_feb8.json"
+CSV_PATH = r"assets/data/mien_dictionary_feb12.csv"
+JSON_PATH = r"assets/data/mien_dictionary_feb12.json"
 
 with open(CSV_PATH, encoding="utf-8-sig", newline="") as f:
     rows = list(csv.DictReader(f))

@@ -25,7 +25,7 @@
 //     - assets/audio/
 // - Your audio files are .wav and stored under assets/audio/
 // - Your active JSON file:
-///    assets/data/mien_dictionary_feb8.json
+///    assets/data/mien_dictionary_feb12.json
 
 import 'dart:convert';
 
@@ -301,8 +301,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   int _scoreTerm(String term, String q) {
     // Exact > startsWith > word-boundary contains > contains
     if (term == q) return 5000;
-    if (term.startsWith(q))
+    if (term.startsWith(q)) {
       return 3500 + (800 - _cap(term.length)); // shorter terms bubble up
+    }
     if (_wordBoundaryContains(term, q)) return 2000;
     if (term.contains(q)) return 1200;
 
@@ -377,7 +378,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       _loading = true;
       _loadError = null;
     });
-
+    debugPrint('*** RUNNING FEB12 BUILD: 15666 expected ***');
     try {
       final jsonText = await rootBundle.loadString(kDictAssetPath);
       final decoded = jsonDecode(jsonText);
@@ -630,14 +631,14 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     if (s.isEmpty) return '';
 
     // Strip accidental prefixes
-    if (s.startsWith('assets/'))
+    if (s.startsWith('assets/')) {
       s = s.substring('assets/'.length); // "audio/xxx.wav" or "audio/..."
+    }
     if (s.startsWith('audio/')) {
       // ok
       return s;
     }
 
-    // If they stored "assets/audio/xxx.wav" -> after stripping "assets/" becomes "audio/xxx.wav"
     // If they stored only filename -> add "audio/"
     if (!s.contains('/')) {
       return 'audio/$s';
@@ -772,6 +773,26 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 tooltip: 'Clear search',
                 onPressed: _clearSearchAndCancelDictation,
                 icon: const Icon(Icons.clear),
+              ),
+              IconButton(
+                tooltip: 'About',
+                icon: const Icon(Icons.info_outline),
+                onPressed: () {
+                  showAboutDialog(
+                    context: context,
+                    applicationName: 'Mien Dictionary',
+                    applicationVersion: 'Feb 12 Edition',
+                    children: const [
+                      SizedBox(height: 12),
+                      Text(
+                        'Developed by Dr. Kal Phan\n'
+                        'The Center for Mien Advancement\n\n'
+                        'This is a community Mien language development '
+                        'and preservation project.',
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -1253,7 +1274,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         const SizedBox(width: 10),
         Expanded(
           child: DropdownButtonFormField<Lang>(
-            value: value,
+            initialValue: value,
             items: items
                 .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
                 .toList(),
