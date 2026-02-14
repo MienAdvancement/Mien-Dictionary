@@ -19,13 +19,16 @@
 //    - Uses audioplayers AssetSource with robust path normalization for values like:
 //        "00001.wav", "audio/00001.wav", "assets/audio/00001.wav"
 //
+// NEW:
+// 5) Bottom footer shows contributor + WIP notice (always visible, SafeArea-friendly)
+//
 // IMPORTANT:
 // - Your pubspec.yaml assets must include:
 //     - assets/data/
 //     - assets/audio/
 // - Your audio files are .wav and stored under assets/audio/
 // - Your active JSON file:
-///    assets/data/mien_dictionary_feb12.json
+//     assets/data/mien_dictionary_feb12.json
 
 import 'dart:convert';
 
@@ -187,6 +190,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // ========= FEEDBACK (Google Form) =========
   static const String kFeedbackPrefillBaseUrl =
       'PASTE_YOUR_GOOGLE_FORM_PREFILL_URL_HERE';
+
+  // ========= FOOTER TEXT =========
+  static const String kFooterLine1 =
+      'Work in progress • Audio and entries still being improved';
+  static const String kFooterLine2 =
+      'Contributors: Dr. Kal Phan • The Center for Mien Advancement';
 
   // Audio player (assets/audio/<filename>)
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -460,6 +469,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           'audio_mien',
           'audio (mien)',
           'audio',
+          'Audio', // your current JSON uses "Audio"
         ]);
 
         final pos = getStr(m, [
@@ -750,6 +760,24 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   // -------------------------
+  // Footer (bottom of page)
+  // -------------------------
+  Widget _footer(ColorScheme cs) {
+    return Container(
+      color: cs.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: SafeArea(
+        top: false,
+        child: Text(
+          '$kFooterLine1\n$kFooterLine2',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+
+  // -------------------------
   // Build UI
   // -------------------------
   @override
@@ -796,6 +824,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               ),
             ],
           ),
+
+          // ✅ Footer always visible at bottom
+          bottomNavigationBar: _footer(cs),
+
           body: SafeArea(
             child: _loading
                 ? const Center(
