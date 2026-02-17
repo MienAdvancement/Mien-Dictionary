@@ -1097,7 +1097,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         final isSel = _selected?.id == e.id;
 
         final inputText = e.inLang(_inputLang);
-        final previewMien = e.mien.trim();
+
+        // NEW: decide what to show on the second line (subtitle)
+        final subtitleText = (_inputLang == Lang.mien)
+            ? e
+                  .inLang(_outputLang)
+                  .trim() // when input is Mien, show output language
+            : e.mien.trim(); // otherwise show Mien
 
         return ListTile(
           dense: true,
@@ -1110,7 +1116,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
-            previewMien.isEmpty ? '—' : previewMien,
+            subtitleText.isEmpty ? '—' : subtitleText,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1168,15 +1174,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              inputText.isEmpty ? '—' : inputText,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: cs.onSurfaceVariant,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
                             Text(
                               outputText.isEmpty ? '—' : outputText,
                               style: const TextStyle(
