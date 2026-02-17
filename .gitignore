@@ -21,3 +21,7 @@ ios/Flutter/Flutter.podspec
 # OS
 .DS_Store
 Thumbs.db
+
+# Flutter build outputs
+build/
+
