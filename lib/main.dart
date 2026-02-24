@@ -28,7 +28,7 @@
 //     - assets/audio/
 // - Your audio files are .wav and stored under assets/audio/
 // - Your active JSON file:
-//     assets/data/mien_dictionary_feb12.json
+//     assets/data/mien_translation_feb23.json
 
 import 'dart:convert';
 
@@ -184,7 +184,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // =========================
   // CONFIG
   // =========================
-  static const String kDictAssetPath = 'assets/data/mien_dictionary_feb12.json';
+  static const String kDictAssetPath =
+      'assets/data/mien_translation_feb23.json';
 
   // ========= FEEDBACK (Google Form) =========
   static const String kFeedbackPrefillBaseUrl =
