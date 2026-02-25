@@ -277,11 +277,28 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // -------------------------
   void _swapLanguages() {
     setState(() {
-      final oldInput = _inputLang;
-      final oldOutput = _outputLang;
-      _inputLang = oldOutput;
-      _outputLang = oldInput;
+      final oldInputLang = _inputLang;
+      final oldOutputLang = _outputLang;
+
+      final oldSelected = _selected;
+
+      _inputLang = oldOutputLang;
+      _outputLang = oldInputLang;
+
       _enforceDifferentLanguages();
+
+      // ✅ Move previous translation into the search box
+      if (oldSelected != null) {
+        final reversedText = oldSelected.inLang(_inputLang).trim();
+        _queryCtrl.text = reversedText;
+        _queryCtrl.selection = TextSelection.collapsed(
+          offset: reversedText.length,
+        );
+      }
+
+      // ✅ Clear selection to prevent mismatched UI state
+      _selected = null;
+
       _applyFilter();
     });
   }
@@ -820,16 +837,33 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // Footer (bottom of page)
   // -------------------------
   Widget _footer(ColorScheme cs) {
-    return Container(
-      color: cs.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: SafeArea(
-        top: false,
-        child: Text(
-          '$kFooterLine1\n$kFooterLine2',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-        ),
+    return SizedBox(
+      height: 96,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            kHeaderBannerAsset, // assets/ui/mien_header.jpg
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                Container(color: cs.surfaceContainerHighest),
+          ),
+
+          // Dark overlay improves text readability
+          Container(color: Colors.black.withOpacity(0.35)),
+
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Text(
+                '$kFooterLine1\n$kFooterLine2',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -848,35 +882,21 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       padding: EdgeInsets.fromLTRB(12, 12, 12, bottomInset > 0 ? 8 : 12),
       child: Column(
         children: [
-          // ✅ everything scrolls on small phones
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
-                _headerBanner(cs),
-                const SizedBox(height: 10),
                 _mobileTopBar(cs),
                 const SizedBox(height: 10),
                 _mobileInputSection(cs),
                 const SizedBox(height: 12),
 
-                // IMPORTANT: this must NOT contain Expanded internally
                 _mobileOutputAndOptions(cs),
 
-                const SizedBox(height: 14),
+                // ✅ extra bottom space so last options aren’t hidden by global bottomSheet button
+                const SizedBox(height: 70),
               ],
-            ),
-          ),
-
-          // ✅ fixed position: just above footer
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton.icon(
-              onPressed: _openFeedbackFormForSelected,
-              icon: const Icon(Icons.feedback_outlined),
-              label: const Text('Feedback and Suggestion'),
             ),
           ),
         ],
@@ -1052,21 +1072,23 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 const SizedBox(height: 6),
 
                 // Match word + speaker (NO filename)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6, // ✅ "a few spaces" after the word
                   children: [
-                    Expanded(
-                      child: Text(
-                        outputText.isEmpty ? '—' : outputText,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    Text(
+                      outputText.isEmpty ? '—' : outputText,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     if (showSpeaker)
                       IconButton(
                         tooltip: 'Play Mien audio',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                         onPressed: () => _playMienAudioIfAvailable(selected),
                         icon: Icon(Icons.volume_up, color: cs.primary),
                       ),
@@ -1074,10 +1096,14 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 ),
 
                 if (selected.pos.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     selected.pos.trim(),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.normal,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ],
 
@@ -1101,24 +1127,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   if (exu.trim().isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Text(exu, style: TextStyle(color: cs.onSurfaceVariant)),
-                  ] else ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'No Note/Example/Usage/Origin for this entry.',
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
                   ],
                 ],
-
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 44,
-                  child: OutlinedButton.icon(
-                    onPressed: _openFeedbackFormForSelected,
-                    icon: const Icon(Icons.feedback_outlined),
-                    label: const Text('Feedback and Suggestion'),
-                  ),
-                ),
               ],
             ),
     );
@@ -1208,6 +1218,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    // ✅ Global keyboard-open detector for footer + global feedback button
+    final kbOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+
+    // ✅ Show feedback only when keyboard closed AND either no query yet OR a selection exists
+    final showFeedbackGlobal =
+        !kbOpen && (_queryCtrl.text.trim().isEmpty || _selected != null);
+
     return OrientationBuilder(
       builder: (context, orientation) {
         return Scaffold(
@@ -1248,8 +1265,27 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             ],
           ),
 
-          // ✅ Footer always visible at bottom
-          bottomNavigationBar: _footer(cs),
+          // ✅ Footer always visible at bottom (and hidden when keyboard is open)
+          bottomNavigationBar: kbOpen ? const SizedBox.shrink() : _footer(cs),
+
+          // ✅ ONE global feedback button system (mobile + desktop), hidden when keyboard is open
+          bottomSheet: showFeedbackGlobal
+              ? SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: OutlinedButton.icon(
+                        onPressed: _openFeedbackFormForSelected,
+                        icon: const Icon(Icons.feedback_outlined),
+                        label: const Text('Feedback and Suggestion'),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
 
           body: SafeArea(
             child: _loading
@@ -1640,15 +1676,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                           ],
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 44,
-              child: OutlinedButton.icon(
-                onPressed: _openFeedbackFormForSelected,
-                icon: const Icon(Icons.feedback_outlined),
-                label: const Text('Feedback and Suggestion'),
               ),
             ),
             const SizedBox(height: 10),
