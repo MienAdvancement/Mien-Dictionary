@@ -28,4 +28,5 @@ flutter:
   assets:
     - assets/data/
     - assets/audio/
+    - assets/ui/
 

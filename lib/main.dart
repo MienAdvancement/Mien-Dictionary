@@ -21,11 +21,19 @@
 //
 // NEW:
 // 5) Bottom footer shows contributor + WIP notice (always visible, SafeArea-friendly)
+// 6) Header banner at top of page (web-friendly, safe for readability)
+// 7) ✅ Phone layout redone to match your mock:
+//    - Top teal bar with Input dropdown + swap + Output dropdown (same row)
+//    - Input section with small label + underline field
+//    - Output panel with match word + speaker (NO filename), POS, notes/examples/usage or Mandarin/Cantonese
+//    - Word options panel below output panel
+//    - Desktop stays side-by-side panels
 //
 // IMPORTANT:
 // - Your pubspec.yaml assets must include:
 //     - assets/data/
 //     - assets/audio/
+//     - assets/ui/
 // - Your audio files are .wav and stored under assets/audio/
 // - Your active JSON file:
 //     assets/data/mien_translation_feb23.json
@@ -38,7 +46,10 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:url_launcher/url_launcher.dart';
 
-void main() => runApp(const MienDictionaryApp());
+void main() {
+  debugPrint('RUNNING NEW MOCK BUILD');
+  runApp(const MienDictionaryApp());
+}
 
 class MienDictionaryApp extends StatelessWidget {
   const MienDictionaryApp({super.key});
@@ -187,6 +198,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   static const String kDictAssetPath =
       'assets/data/mien_translation_feb23.json';
 
+  // Header banner image (put this file at assets/ui/mien_header.jpg)
+  static const String kHeaderBannerAsset = 'assets/ui/mien_header.jpg';
+
   // ========= FEEDBACK (Google Form) =========
   static const String kFeedbackPrefillBaseUrl =
       'https://docs.google.com/forms/d/e/1FAIpQLSeTxlhmNZkZXR6nHarKuuLeBd14E4S9BRvKUU4LCOxJi5mMSg/viewform?usp=header';
@@ -283,7 +297,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       child: IconButton(
         tooltip: 'Swap input/output',
         iconSize: 28,
-        icon: const Icon(Icons.swap_horiz),
+        icon: Icon(
+          MediaQuery.of(context).size.width < 900
+              ? Icons.swap_vert
+              : Icons.swap_horiz,
+        ),
         onPressed: _swapLanguages,
       ),
     );
@@ -387,7 +405,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       _loading = true;
       _loadError = null;
     });
-    debugPrint('*** RUNNING FEB12 BUILD: 15666 expected ***');
+
+    debugPrint('*** RUNNING FEB23 BUILD ***');
+
     try {
       final jsonText = await rootBundle.loadString(kDictAssetPath);
       final decoded = jsonDecode(jsonText);
@@ -750,6 +770,53 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   // -------------------------
+  // Header banner (top of page) - responsive height (phone safe, desktop stable)
+  // -------------------------
+  Widget _headerBanner(ColorScheme cs) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final w = c.maxWidth;
+          final h = (w * 0.22).clamp(78.0, 140.0);
+
+          return SizedBox(
+            height: h,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  kHeaderBannerAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) {
+                    // If the image is missing, show a clean fallback instead of crashing.
+                    return Container(
+                      color: cs.surfaceContainerHighest,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Text(
+                        'Mien Online Dictionary',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                // subtle overlay for readability
+                Container(color: Colors.black.withOpacity(0.12)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // -------------------------
   // Footer (bottom of page)
   // -------------------------
   Widget _footer(ColorScheme cs) {
@@ -767,13 +834,379 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
+  // ============================================================
+  // PHONE LAYOUT (matches your mock)
+  // Top bar: Input dropdown + swap + Output dropdown
+  // Input section: small label + underline field
+  // Output panel: small label + match word + speaker (NO filename) + POS + notes or Mandarin/Cantonese
+  // Word options: selectable list
+  // ============================================================
+  Widget _mobileMockLayout(ColorScheme cs) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 12, 12, bottomInset > 0 ? 8 : 12),
+      child: Column(
+        children: [
+          // ✅ everything scrolls on small phones
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              children: [
+                _headerBanner(cs),
+                const SizedBox(height: 10),
+                _mobileTopBar(cs),
+                const SizedBox(height: 10),
+                _mobileInputSection(cs),
+                const SizedBox(height: 12),
+
+                // IMPORTANT: this must NOT contain Expanded internally
+                _mobileOutputAndOptions(cs),
+
+                const SizedBox(height: 14),
+              ],
+            ),
+          ),
+
+          // ✅ fixed position: just above footer
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: _openFeedbackFormForSelected,
+              icon: const Icon(Icons.feedback_outlined),
+              label: const Text('Feedback and Suggestion'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileTopBar(ColorScheme cs) {
+    final allowedOutputs = _allowedOutputsFor(_inputLang);
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          // Input dropdown shows the ACTUAL selected language name
+          Expanded(
+            child: DropdownButtonFormField<Lang>(
+              isExpanded: true,
+              value: _inputLang,
+              items: _allLangs
+                  .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() {
+                  _inputLang = v;
+                  _enforceDifferentLanguages();
+                  _applyFilter();
+                });
+              },
+              decoration: InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // Swap button (force horizontal icon)
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              border: Border.all(color: cs.outlineVariant),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: IconButton(
+              tooltip: 'Swap input/output',
+              iconSize: 28,
+              icon: const Icon(Icons.swap_horiz), // ✅ always horizontal
+              onPressed: _swapLanguages,
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // Output dropdown shows the ACTUAL selected language name
+          Expanded(
+            child: DropdownButtonFormField<Lang>(
+              isExpanded: true,
+              value: _outputLang,
+              items: allowedOutputs
+                  .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
+                  .toList(),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() => _outputLang = v);
+              },
+              decoration: InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileInputSection(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _inputLang.label,
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _queryCtrl,
+            focusNode: _queryFocus,
+            decoration: InputDecoration(
+              hintText: 'Enter Text',
+              border: const UnderlineInputBorder(),
+              isDense: true,
+              suffixIcon: _queryCtrl.text.trim().isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.clear),
+                      onPressed: _clearSearchAndCancelDictation,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mobileOutputAndOptions(ColorScheme cs) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _mobileOutputPanel(cs),
+        const SizedBox(height: 10),
+        _mobileWordOptionsPanel(cs),
+      ],
+    );
+  }
+
+  Widget _mobileOutputPanel(ColorScheme cs) {
+    final selected = _selected;
+
+    final outputText = selected?.inLang(_outputLang).trim() ?? '';
+    final showSpeaker =
+        (_outputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
+    final exu = (selected == null) ? '' : _exampleUsageOriginLines(selected);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: selected == null
+          ? Text(
+              'No selection.\n\nType above and pick a word option below.',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _outputLang.label,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 6),
+
+                // Match word + speaker (NO filename)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        outputText.isEmpty ? '—' : outputText,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (showSpeaker)
+                      IconButton(
+                        tooltip: 'Play Mien audio',
+                        onPressed: () => _playMienAudioIfAvailable(selected),
+                        icon: Icon(Icons.volume_up, color: cs.primary),
+                      ),
+                  ],
+                ),
+
+                if (selected.pos.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    selected.pos.trim(),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+
+                // Chinese extra lines only if output is Chinese
+                if (_outputLang == Lang.chinese) ...[
+                  if (selected.mandarin.trim().isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Mandarin: ${selected.mandarin.trim()}',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                  if (selected.cantonese.trim().isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Cantonese: ${selected.cantonese.trim()}',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ] else ...[
+                  if (exu.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(exu, style: TextStyle(color: cs.onSurfaceVariant)),
+                  ] else ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'No Note/Example/Usage/Origin for this entry.',
+                      style: TextStyle(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ],
+
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: _openFeedbackFormForSelected,
+                    icon: const Icon(Icons.feedback_outlined),
+                    label: const Text('Feedback and Suggestion'),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _mobileWordOptionsPanel(ColorScheme cs) {
+    final q = _cleanForMatch(_queryCtrl.text, lang: _inputLang);
+
+    final hasList = q.isNotEmpty && _results.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // ✅ critical
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Word options',
+            style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            q.isEmpty
+                ? 'Type above to see options.'
+                : (_results.isEmpty
+                      ? 'No matches for “$q”.'
+                      : 'Tap a word to select.'),
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+
+          // ✅ NO Expanded. Show list only when needed.
+          if (!hasList)
+            const SizedBox.shrink()
+          else
+            ListView.separated(
+              shrinkWrap: true, // ✅ critical
+              physics: const NeverScrollableScrollPhysics(), // ✅ critical
+              itemCount: _results.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, i) {
+                final e = _results[i];
+                final isSel = _selected?.id == e.id;
+
+                final title = e.inLang(_inputLang).trim();
+                final subtitle = (_inputLang == Lang.mien)
+                    ? e.inLang(_outputLang).trim()
+                    : e.mien.trim();
+
+                return ListTile(
+                  dense: true,
+                  selected: isSel,
+                  onTap: () => setState(() => _selected = e),
+                  title: Text(
+                    title.isEmpty ? '—' : title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isSel ? cs.primary : cs.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    subtitle.isEmpty ? '—' : subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   // -------------------------
   // Build UI
   // -------------------------
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return OrientationBuilder(
       builder: (context, orientation) {
@@ -799,7 +1232,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'Faan Mienh Waac (Mien Translation)',
-                    applicationVersion: 'Feb 12 Edition',
+                    applicationVersion: 'Feb 23 Edition',
                     children: const [
                       SizedBox(height: 12),
                       Text(
@@ -835,43 +1268,38 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                     builder: (context, c) {
                       final wide = c.maxWidth >= 900;
 
+                      // Desktop/web: your original two-panel layout
                       if (wide) {
                         return Padding(
                           padding: const EdgeInsets.all(12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Column(
                             children: [
-                              Expanded(child: _leftPanel(cs, orientation)),
-                              const SizedBox(width: 10),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 18),
-                                child: _swapBox(cs),
+                              _headerBanner(cs),
+                              const SizedBox(height: 12),
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: _leftPanel(cs, orientation),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 18),
+                                      child: _swapBox(cs),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(child: _rightPanel(cs)),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(child: _rightPanel(cs)),
                             ],
                           ),
                         );
                       }
 
-                      return Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: ListView(
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: EdgeInsets.only(bottom: bottomInset + 16),
-                          children: [
-                            _leftPanel(cs, orientation),
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: Alignment.center,
-                              child: _swapBox(cs),
-                            ),
-                            const SizedBox(height: 10),
-                            _rightPanel(cs),
-                          ],
-                        ),
-                      );
+                      // Phone: mock-style layout
+                      return _mobileMockLayout(cs);
                     },
                   ),
           ),
@@ -916,15 +1344,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
-  // LEFT PANEL
+  // LEFT PANEL (desktop)
   Widget _leftPanel(ColorScheme cs, Orientation orientation) {
     final selected = _selected;
     final showInputMienSpeaker =
         (_inputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
-
-    final inputBoxHeight = (orientation == Orientation.landscape)
-        ? 360.0
-        : 420.0;
 
     return Card(
       elevation: 0,
@@ -980,8 +1404,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               ],
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              height: inputBoxHeight,
+            Expanded(
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -1025,7 +1448,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      // ✅ INPUT-side Mien audio: only when Input = Mien AND selected has audio
                       if (showInputMienSpeaker) ...[
                         const SizedBox(height: 6),
                         Align(
@@ -1099,12 +1521,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
         final inputText = e.inLang(_inputLang);
 
-        // NEW: decide what to show on the second line (subtitle)
+        // decide what to show on the second line (subtitle)
         final subtitleText = (_inputLang == Lang.mien)
-            ? e
-                  .inLang(_outputLang)
-                  .trim() // when input is Mien, show output language
-            : e.mien.trim(); // otherwise show Mien
+            ? e.inLang(_outputLang).trim()
+            : e.mien.trim();
 
         return ListTile(
           dense: true,
@@ -1118,7 +1538,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           ),
           subtitle: Text(
             subtitleText.isEmpty ? '—' : subtitleText,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
         );
@@ -1126,15 +1546,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
-  // RIGHT PANEL + feedback button
+  // RIGHT PANEL (desktop) - audio button shows, NO filename shown
   Widget _rightPanel(ColorScheme cs) {
     final allowed = _allowedOutputsFor(_inputLang);
     final selected = _selected;
 
-    final inputText = selected?.inLang(_inputLang) ?? '';
     final outputText = selected?.inLang(_outputLang) ?? '';
 
-    // ✅ OUTPUT-side Mien audio: only when Output = Mien AND selected has audio
     final showRightSpeaker =
         (_outputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
 
@@ -1158,8 +1576,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               onChanged: (v) => setState(() => _outputLang = v),
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              height: 300,
+            Expanded(
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -1175,12 +1592,28 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              outputText.isEmpty ? '—' : outputText,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    outputText.isEmpty ? '—' : outputText,
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (showRightSpeaker)
+                                  IconButton(
+                                    tooltip: 'Play Mien audio',
+                                    onPressed: () =>
+                                        _playMienAudioIfAvailable(selected),
+                                    icon: Icon(
+                                      Icons.volume_up,
+                                      color: cs.primary,
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 10),
                             if (selected.pos.trim().isNotEmpty)
@@ -1188,8 +1621,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                                 selected.pos,
                                 style: TextStyle(color: cs.onSurfaceVariant),
                               ),
-
-                            // Mandarin/Cantonese only when output is Chinese
                             if (_outputLang == Lang.chinese) ...[
                               if (selected.mandarin.trim().isNotEmpty) ...[
                                 const SizedBox(height: 10),
@@ -1206,58 +1637,21 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                                 ),
                               ],
                             ],
-
-                            if (showRightSpeaker) ...[
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Play Mien audio',
-                                    onPressed: () =>
-                                        _playMienAudioIfAvailable(selected),
-                                    icon: Icon(
-                                      Icons.volume_up,
-                                      color: cs.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      _normalizeAudioToAssetSourcePath(
-                                        selected.audioMien,
-                                      ),
-                                      style: TextStyle(
-                                        color: cs.onSurfaceVariant,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
                           ],
                         ),
                       ),
               ),
             ),
             const SizedBox(height: 10),
-
-            // Feedback button
             SizedBox(
               height: 44,
               child: OutlinedButton.icon(
                 onPressed: _openFeedbackFormForSelected,
                 icon: const Icon(Icons.feedback_outlined),
-                label: Text(
-                  _feedbackConfigured
-                      ? 'Feedback and Suggestion'
-                      : 'Feedback and Suggestion',
-                ),
+                label: const Text('Feedback and Suggestion'),
               ),
             ),
-
             const SizedBox(height: 10),
-
             if (selected != null && exu.trim().isNotEmpty)
               Container(
                 width: double.infinity,
@@ -1281,6 +1675,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
+  // Dropdown row (FIX: no hidden options / better web behavior)
   Widget _langRow({
     required String title,
     required Lang value,
@@ -1293,7 +1688,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         const SizedBox(width: 10),
         Expanded(
           child: DropdownButtonFormField<Lang>(
-            initialValue: value,
+            isExpanded: true,
+            menuMaxHeight: MediaQuery.of(context).size.height * 0.55,
+            value: value, // controlled
             items: items
                 .map((l) => DropdownMenuItem(value: l, child: Text(l.label)))
                 .toList(),
@@ -1308,7 +1705,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 10,
-                vertical: 10,
+                vertical: 8,
               ),
             ),
           ),
