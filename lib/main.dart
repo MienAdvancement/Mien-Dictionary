@@ -25,7 +25,7 @@
 // C) Mandarin + Cantonese pronunciation speaks CHINESE CHARACTERS ONLY (entry.chinese), not romanized fields
 //    - Web/Chrome: uses Web Speech API voice by lang: zh-CN and zh-HK
 // D) TTS never pronounces "(Mienh)" (strip parenthetical text for all non-Mien speak paths)
-// E) Lao pronunciation works (Output=Lao speak uses lo-LA on web + flutter_tts fallback)
+// E) Lao pronunciation temporarily disabled (no Lao voice available on current web devices)
 //
 // 5) Bottom footer shows contributor + WIP notice (always visible, SafeArea-friendly)
 // 6) Header banner at top of page (web-friendly, safe for readability)
@@ -37,7 +37,7 @@
 // - assets/ui/
 //
 // Active JSON file:
-//   assets/data/mien_translation_feb23.json
+//   assets/data/mien_translation_march1.json
 
 import 'dart:convert';
 import 'dart:js' as js;
@@ -201,7 +201,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // CONFIG
   // =========================
   static const String kDictAssetPath =
-      'assets/data/mien_translation_feb23.json';
+      'assets/data/mien_translation_march1.json';
 
   // Header banner image (put this file at assets/ui/mien_header.jpg)
   static const String kHeaderBannerAsset = 'assets/ui/mien_header.jpg';
@@ -471,7 +471,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       _loadError = null;
     });
 
-    debugPrint('*** RUNNING FEB23 BUILD ***');
+    debugPrint('*** RUNNING march1 BUILD ***');
 
     try {
       final jsonText = await rootBundle.loadString(kDictAssetPath);
@@ -892,6 +892,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   Future<void> _speakOutputIfNonMien(DictEntry e) async {
+    // ✅ Lao temporarily disabled (no speaker button + safety block)
+    if (_outputLang == Lang.lao) {
+      _toast('Lao pronunciation is temporarily disabled.');
+      return;
+    }
+
     if (_outputLang == Lang.mien) {
       _toast('Mien uses recorded audio.');
       return;
@@ -910,17 +916,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       return;
     }
 
-    // ✅ Web/Chrome: use Web Speech API for better reliability (including Lao)
+    // ✅ Web/Chrome: use Web Speech API
     final locale = _localeForOutput(_outputLang);
     if (kIsWeb) {
-      final ok = await _webSpeak(cleaned, lang: locale);
-      if (ok) return;
-
-      // If the exact locale isn't present, for Lao sometimes voices are missing.
-      // Try a softer fallback for Lao (some systems may expose lo only)
-      if (_outputLang == Lang.lao) {
-        await _webSpeak(cleaned, lang: 'lo');
-      }
+      await _webSpeak(cleaned, lang: locale);
       return;
     }
 
@@ -1231,7 +1230,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 6),
-
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 6,
@@ -1252,7 +1250,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   onPressed: () => _playMienAudioIfAvailable(selected),
                   icon: Icon(Icons.volume_up, color: cs.primary),
                 ),
-              if (selected != null && _outputLang != Lang.mien)
+
+              // ✅ DISABLE speaker for Lao
+              if (selected != null &&
+                  _outputLang != Lang.mien &&
+                  _outputLang != Lang.lao)
                 IconButton(
                   tooltip: 'Speak',
                   visualDensity: VisualDensity.compact,
@@ -1263,6 +1265,15 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 ),
             ],
           ),
+
+          // Optional: show a small note for Lao
+          if (selected != null && _outputLang == Lang.lao) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Lao pronunciation coming soon.',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+            ),
+          ],
 
           if (selected != null && selected.pos.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -1456,7 +1467,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'Faan Mienh Waac (Mien Translation)',
-                    applicationVersion: 'Feb 23 Edition',
+                    applicationVersion: 'March 1 Edition',
                     children: const [
                       SizedBox(height: 12),
                       Text(
@@ -1471,7 +1482,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               ),
             ],
           ),
-
           bottomNavigationBar: kbOpen
               ? const SizedBox.shrink()
               : const ContributorFooter(
@@ -1480,7 +1490,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   line2: kCreditLine2,
                   wip: kCreditWip,
                 ),
-
           bottomSheet: showFeedbackGlobal
               ? SafeArea(
                   top: false,
@@ -1498,7 +1507,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   ),
                 )
               : null,
-
           body: SafeArea(
             child: _loading
                 ? const Center(
@@ -1867,7 +1875,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                                   _playMienAudioIfAvailable(selected),
                               icon: Icon(Icons.volume_up, color: cs.primary),
                             ),
-                          if (selected != null && _outputLang != Lang.mien)
+
+                          // ✅ DISABLE speaker for Lao
+                          if (selected != null &&
+                              _outputLang != Lang.mien &&
+                              _outputLang != Lang.lao)
                             IconButton(
                               tooltip: 'Speak',
                               visualDensity: VisualDensity.compact,
@@ -1878,6 +1890,19 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                             ),
                         ],
                       ),
+
+                      // Optional: show a small note for Lao
+                      if (selected != null && _outputLang == Lang.lao) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Lao pronunciation coming soon.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 10),
 
                       if (selected != null && selected.pos.trim().isNotEmpty)
