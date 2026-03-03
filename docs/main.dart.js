@@ -43334,7 +43334,7 @@ A.Jx.prototype={
 K(a){var s,r,q,p,o,n,m=null,l=A.W(a).ax,k=l.to
 if(k==null){k=l.n
 if(k==null)k=l.k3}s=l.k3
-r=A.b6("Mienh waac is our only country",m,m,m,A.c1(m,m,s,m,m,m,m,m,m,m,m,16,m,m,B.bI,m,m,!0,m,m,m,m,m,m,m,m),B.bA,m)
+r=A.b6("Mienh waac makes us Mienh",m,m,m,A.c1(m,m,s,m,m,m,m,m,m,m,m,16,m,m,B.bI,m,m,!0,m,m,m,m,m,m,m,m),B.bA,m)
 q=l.rx
 p=q==null
 o=A.b6("Developed by: Dr. Kal Phan",m,m,m,A.c1(m,m,p?s:q,m,m,m,m,m,m,m,m,12,m,m,m,m,m,!0,m,m,m,m,m,m,m,m),B.bA,m)

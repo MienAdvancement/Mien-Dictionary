@@ -211,12 +211,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       'https://docs.google.com/forms/d/e/1FAIpQLSeTxlhmNZkZXR6nHarKuuLeBd14E4S9BRvKUU4LCOxJi5mMSg/viewform?usp=header';
 
   // ========= FOOTER / CREDIT TEXT (screenshot-style box) =========
-  static const String kCreditHeadline = 'Mienh waac is our only country';
+  static const String kCreditHeadline = 'Mienh waac makes us Mienh';
   static const String kCreditLine1 = 'Developed by: Dr. Kal Phan';
   static const String kCreditLine2 = 'The Center for Mien Advancement';
   static const String kCreditWip =
       'A work in progress—translations are still being refined. Your feedback and suggestions help strengthen accuracy and understanding.';
-
+  static const String kCreditContact = 'Contact webmaster: phankal@comcast.net';
   // Audio player (assets/audio/<filename>)
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -1488,6 +1488,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   headline: kCreditHeadline,
                   line1: kCreditLine1,
                   line2: kCreditLine2,
+                  contactEmail: 'phankal@comcast.net',
                   wip: kCreditWip,
                 ),
           bottomSheet: showFeedbackGlobal
@@ -2039,6 +2040,7 @@ class ContributorFooter extends StatelessWidget {
   final String headline;
   final String line1;
   final String line2;
+  final String contactEmail;
   final String wip;
 
   const ContributorFooter({
@@ -2046,12 +2048,30 @@ class ContributorFooter extends StatelessWidget {
     required this.headline,
     required this.line1,
     required this.line2,
+    required this.contactEmail,
     required this.wip,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    Future<void> sendEmail() async {
+      final subject = Uri.encodeComponent('Mien Dictionary Technical Issue');
+      final body = Uri.encodeComponent(
+        'Please describe the problem you encountered:',
+      );
+
+      final uri = Uri.parse('mailto:$contactEmail?subject=$subject&body=$body');
+
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open email application')),
+        );
+      }
+    }
 
     return Material(
       elevation: 2,
@@ -2088,6 +2108,31 @@ class ContributorFooter extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
+              const SizedBox(height: 10),
+
+              /// CONTACT EMAIL (clickable)
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 6,
+                children: [
+                  Text(
+                    'Contact:',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
+                  InkWell(
+                    onTap: sendEmail,
+                    child: Text(
+                      contactEmail,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 14),
               Text(
                 wip,
