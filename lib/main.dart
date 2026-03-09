@@ -14,8 +14,8 @@
 //    - Contains matches allowed
 //    - Ranked results update per keystroke
 // 4) Audio behavior predictable (your rules):
-//    - INPUT-side speaker: only if Input = Mien AND selected has audio (shown under selected word)
-//    - OUTPUT-side speaker: only if Output = Mien AND selected has audio
+//    - INPUT-side Mien audio: show Original and/or AI buttons if available
+//    - OUTPUT-side Mien audio: show Original and/or AI buttons if available
 //    - Uses audioplayers AssetSource with robust path normalization for values like:
 //        "00001.wav", "audio/00001.wav", "assets/audio/00001.wav"
 //
@@ -118,8 +118,9 @@ class DictEntry {
   final String usage;
   final String origin;
 
-  // audio filename like "00001.wav" (stored under assets/audio/)
-  final String audioMien;
+  // NEW: separate Mien audio fields
+  final String audioOriginal;
+  final String audioAI;
 
   // optional (older datasets)
   final String pos;
@@ -144,7 +145,8 @@ class DictEntry {
     required this.example,
     required this.usage,
     required this.origin,
-    required this.audioMien,
+    required this.audioOriginal,
+    required this.audioAI,
     required this.pos,
   });
 
@@ -186,7 +188,9 @@ class DictEntry {
     }
   }
 
-  bool get hasMienAudio => audioMien.trim().isNotEmpty;
+  bool get hasOriginalAudio => audioOriginal.trim().isNotEmpty;
+  bool get hasAiAudio => audioAI.trim().isNotEmpty;
+  bool get hasAnyMienAudio => hasOriginalAudio || hasAiAudio;
 }
 
 class DictionaryHomePage extends StatefulWidget {
@@ -217,6 +221,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   static const String kCreditWip =
       'A work in progress—translations are still being refined. Your feedback and suggestions help strengthen accuracy and understanding.';
   static const String kCreditContact = 'Contact webmaster: phankal@comcast.net';
+
   // Audio player (assets/audio/<filename>)
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -285,7 +290,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   List<Lang> get _allLangs => Lang.values;
 
   List<Lang> _allowedOutputsFor(Lang input) {
-    // allow everything except same-language pairing
     return _allLangs.where((l) => l != input).toList();
   }
 
@@ -310,7 +314,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
       _enforceDifferentLanguages();
 
-      // ✅ Move previous translation into the search box
       if (oldSelected != null) {
         final reversedText = oldSelected.inLang(_inputLang).trim();
         _queryCtrl.text = reversedText;
@@ -319,21 +322,17 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         );
       }
 
-      // ✅ Clear selection to prevent mismatched UI state
       _selected = null;
 
       _applyFilter();
     });
   }
 
-  // ✅ Centralized selection behavior (used by mobile + desktop lists)
   void _selectEntry(DictEntry e) {
     final t = e.inLang(_inputLang).trim();
 
     setState(() {
       _selected = e;
-
-      // keep search box aligned to the chosen entry (so swap works predictably)
       _queryCtrl.text = t;
       _queryCtrl.selection = TextSelection.collapsed(offset: t.length);
     });
@@ -372,7 +371,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     t = t.replaceFirst(RegExp(r"^\s*'"), '');
     t = t.trim();
     t = t.replaceAll(RegExp(r'\s+'), ' ');
-    // keep your old rule: only lower-case for English + Mien
     if (lang == Lang.english || lang == Lang.mien) t = t.toLowerCase();
     return t;
   }
@@ -381,15 +379,13 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // Search: prefix prioritized, contains allowed, ranked
   // -------------------------
   int _scoreTerm(String term, String q) {
-    // Exact > startsWith > word-boundary contains > contains
     if (term == q) return 5000;
     if (term.startsWith(q)) {
-      return 3500 + (800 - _cap(term.length)); // shorter terms bubble up
+      return 3500 + (800 - _cap(term.length));
     }
     if (_wordBoundaryContains(term, q)) return 2000;
     if (term.contains(q)) return 1200;
 
-    // Optional: ignore spaces/underscores for compound consistency
     final t2 = term.replaceAll(RegExp(r'[\s_]+'), '');
     final q2 = q.replaceAll(RegExp(r'[\s_]+'), '');
     if (t2 == q2) return 2600;
@@ -414,7 +410,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final q = _cleanForMatch(_queryCtrl.text, lang: _inputLang);
 
-    // ✅ No pre-list before typing
     if (q.isEmpty) {
       setState(() {
         _results = const [];
@@ -437,7 +432,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       final s = b.score.compareTo(a.score);
       if (s != 0) return s;
 
-      // shorter wins, then alpha
       final len = a.term.length.compareTo(b.term.length);
       if (len != 0) return len;
 
@@ -446,7 +440,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final matches = scored.map((x) => x.entry).take(400).toList();
 
-    // ✅ Don’t clobber a manual selection if it’s still in the matches
     DictEntry? nextSelected;
     if (matches.isEmpty) {
       nextSelected = null;
@@ -547,14 +540,26 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         final usage = getStr(m, ['Usage', 'usage']);
         final origin = getStr(m, ['Origin', 'origin']);
 
-        final audioMien = getStr(m, [
-          'Audio (Mien)',
-          'Audio(Mien)',
-          'Audio Mien',
-          'audio_mien',
-          'audio (mien)',
-          'audio',
-          'Audio', // your current JSON uses "Audio"
+        final audioOriginal = getStr(m, [
+          'AudioOriginal',
+          'Audio Original',
+          'Audio_Original',
+          'audiooriginal',
+          'audio_original',
+          'OriginalAudio',
+          'original_audio',
+          'Audio (Original)',
+        ]);
+
+        final audioAI = getStr(m, [
+          'AudioAI',
+          'Audio AI',
+          'Audio_AI',
+          'audioai',
+          'audio_ai',
+          'AIAudio',
+          'ai_audio',
+          'Audio (AI)',
         ]);
 
         final pos = getStr(m, [
@@ -601,7 +606,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             example: example,
             usage: usage,
             origin: origin,
-            audioMien: audioMien,
+            audioOriginal: audioOriginal,
+            audioAI: audioAI,
             pos: pos,
           ),
         );
@@ -646,7 +652,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       case Lang.vietnamese:
         return 'vi_VN';
       case Lang.mien:
-        return 'en_US'; // not used (blocked)
+        return 'en_US';
     }
   }
 
@@ -667,7 +673,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   Future<void> _toggleDictation() async {
-    // ✅ silent block: no mic for Mien
     if (_inputLang == Lang.mien) return;
 
     if (_isListening) {
@@ -721,39 +726,53 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // -------------------------
   // Audio helpers (WAV + Chrome-safe asset path normalization)
   // -------------------------
-  String _normalizeAudioToAssetSourcePath(String raw) {
-    var s = raw.trim();
-    s = s.replaceAll('\\', '/');
-    if (s.isEmpty) return '';
+String _normalizeAudioToAssetSourcePath(String raw) {
+  var s = raw.trim();
+  s = s.replaceAll('\\', '/');
+  if (s.isEmpty) return '';
 
-    if (s.startsWith('assets/')) {
-      s = s.substring('assets/'.length);
-    }
-    if (s.startsWith('audio/')) {
-      return s;
-    }
+  // If full asset path was stored
+  if (s.startsWith('assets/')) {
+    s = s.substring('assets/'.length); // becomes audio/...
+  }
 
-    if (!s.contains('/')) {
-      return 'audio/$s';
-    }
-
-    final idx = s.lastIndexOf('audio/');
-    if (idx != -1) {
-      return s.substring(idx);
-    }
-
+  // Already correct for AssetSource
+  if (s.startsWith('audio/')) {
     return s;
   }
 
-  Future<void> _playMienAudioIfAvailable(DictEntry e) async {
-    if (!e.hasMienAudio) {
-      _toast('No audio for this entry.');
+  // Handle your two subfolders
+  if (s.startsWith('Original/') || s.startsWith('AI/')) {
+    return 'audio/$s';
+  }
+
+  // Just a bare filename
+  if (!s.contains('/')) {
+    return 'audio/$s';
+  }
+
+  // If "audio/" appears later in the string, keep from there
+  final idx = s.lastIndexOf('audio/');
+  if (idx != -1) {
+    return s.substring(idx);
+  }
+
+  // Fallback: prefix audio/
+  return 'audio/$s';
+}
+
+  Future<void> _playSpecificMienAudio(
+    String rawPath, {
+    required String label,
+  }) async {
+    if (rawPath.trim().isEmpty) {
+      _toast('No $label audio for this entry.');
       return;
     }
 
-    final assetPath = _normalizeAudioToAssetSourcePath(e.audioMien);
+    final assetPath = _normalizeAudioToAssetSourcePath(rawPath);
     if (assetPath.isEmpty) {
-      _toast('No audio for this entry.');
+      _toast('No $label audio for this entry.');
       return;
     }
 
@@ -761,8 +780,16 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       await _audioPlayer.stop();
       await _audioPlayer.play(AssetSource(assetPath));
     } catch (err) {
-      _toast('Audio play failed: $err');
+      _toast('$label audio play failed: $err');
     }
+  }
+
+  Future<void> _playOriginalAudio(DictEntry e) async {
+    await _playSpecificMienAudio(e.audioOriginal, label: 'original');
+  }
+
+  Future<void> _playAiAudio(DictEntry e) async {
+    await _playSpecificMienAudio(e.audioAI, label: 'AI');
   }
 
   // -------------------------
@@ -770,7 +797,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // -------------------------
   String _stripParenthetical(String s) {
     var t = s;
-    // (...) and （...）
     t = t.replaceAll(RegExp(r'\s*\([^)]*\)\s*'), ' ');
     t = t.replaceAll(RegExp(r'\s*（[^）]*）\s*'), ' ');
     t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -822,7 +848,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   const voices = synth.getVoices ? synth.getVoices() : [];
   if (!voices || voices.length === 0) return 'NO_VOICES';
 
-  // Prefer exact match; otherwise prefix match (e.g. zh-HK)
   const v = voices.find(x => (x.lang||'') === '$jsLang')
          || voices.find(x => (x.lang||'').startsWith('$jsLang'));
 
@@ -877,7 +902,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     }
 
     if (kIsWeb) {
-      // Your Chrome voice list includes zh-HK Google 粤語（香港）
       await _webSpeak(chars, lang: 'zh-HK');
       return;
     }
@@ -892,7 +916,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   Future<void> _speakOutputIfNonMien(DictEntry e) async {
-    // ✅ Lao temporarily disabled (no speaker button + safety block)
     if (_outputLang == Lang.lao) {
       _toast('Lao pronunciation is temporarily disabled.');
       return;
@@ -903,7 +926,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       return;
     }
 
-    // Chinese output: main speaker defaults to Mandarin (Chinese characters)
     if (_outputLang == Lang.chinese) {
       await _speakMandarinFromChineseChars(e);
       return;
@@ -916,14 +938,12 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       return;
     }
 
-    // ✅ Web/Chrome: use Web Speech API
     final locale = _localeForOutput(_outputLang);
     if (kIsWeb) {
       await _webSpeak(cleaned, lang: locale);
       return;
     }
 
-    // ✅ Non-web fallback: flutter_tts
     try {
       await _tts.stop();
       await _tts.setLanguage(locale);
@@ -938,6 +958,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // -------------------------
   bool get _feedbackConfigured =>
       kFeedbackPrefillBaseUrl.trim().startsWith('https://');
+
   String _safeOneLine(String s) =>
       s.replaceAll('\n', ' ').replaceAll('\r', ' ').trim();
 
@@ -956,7 +977,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       'example': _safeOneLine(e.example),
       'usage': _safeOneLine(e.usage),
       'origin': _safeOneLine(e.origin),
-      'audioMien': _safeOneLine(e.audioMien),
+      'audioOriginal': _safeOneLine(e.audioOriginal),
+      'audioAI': _safeOneLine(e.audioAI),
     };
 
     final merged = <String, String>{...base.queryParameters, ...ctx};
@@ -971,7 +993,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       return;
     }
 
-    final uri = Uri.parse(kFeedbackPrefillBaseUrl);
+    final uri = _selected == null
+        ? Uri.parse(kFeedbackPrefillBaseUrl)
+        : _buildFeedbackUri(_selected!);
+
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok) _toast('Could not open feedback form.');
   }
@@ -995,6 +1020,52 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     if (e.origin.trim().isNotEmpty) parts.add('Origin: ${e.origin.trim()}');
 
     return parts.join('\n');
+  }
+
+  Widget _mienAudioButtons(
+    DictEntry selected,
+    ColorScheme cs, {
+    bool compact = false,
+  }) {
+    if (!selected.hasAnyMienAudio) return const SizedBox.shrink();
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (selected.hasOriginalAudio)
+          OutlinedButton.icon(
+            style: compact
+                ? OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  )
+                : null,
+            onPressed: () => _playOriginalAudio(selected),
+            icon: Icon(Icons.volume_up, color: cs.primary),
+            label: const Text('Native'),
+          ),
+        if (selected.hasAiAudio)
+          OutlinedButton.icon(
+            style: compact
+                ? OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  )
+                : null,
+            onPressed: () => _playAiAudio(selected),
+            icon: Icon(Icons.volume_up, color: cs.primary),
+            label: const Text('AI'),
+          ),
+      ],
+    );
   }
 
   // -------------------------
@@ -1043,7 +1114,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   // ============================================================
-  // PHONE LAYOUT (matches your mock)
+  // PHONE LAYOUT
   // ============================================================
   Widget _mobileMockLayout(ColorScheme cs) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -1209,8 +1280,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     final selected = _selected;
 
     final outputText = selected?.inLang(_outputLang).trim() ?? '';
-    final showMienSpeaker =
-        (_outputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
+    final showMienAudioOptions =
+        (_outputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
 
     final exu = (selected == null) ? '' : _exampleUsageOriginLines(selected);
     final showExu = selected != null && exu.trim().isNotEmpty;
@@ -1233,6 +1304,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             spacing: 6,
+            runSpacing: 8,
             children: [
               Text(
                 (selected == null || outputText.isEmpty) ? '—' : outputText,
@@ -1241,17 +1313,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              if (selected != null && showMienSpeaker)
-                IconButton(
-                  tooltip: 'Play Mien audio',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => _playMienAudioIfAvailable(selected),
-                  icon: Icon(Icons.volume_up, color: cs.primary),
-                ),
 
-              // ✅ DISABLE speaker for Lao
+              if (selected != null && showMienAudioOptions)
+                _mienAudioButtons(selected, cs, compact: true),
+
               if (selected != null &&
                   _outputLang != Lang.mien &&
                   _outputLang != Lang.lao)
@@ -1266,7 +1331,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             ],
           ),
 
-          // Optional: show a small note for Lao
           if (selected != null && _outputLang == Lang.lao) ...[
             const SizedBox(height: 6),
             Text(
@@ -1467,7 +1531,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'Faan Mienh Waac (Mien Translation)',
-                    applicationVersion: 'March 1 Edition',
+                    applicationVersion: 'March 7 Edition',
                     children: const [
                       SizedBox(height: 12),
                       Text(
@@ -1520,43 +1584,45 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                     ),
                   )
                 : (_loadError != null)
-                ? _errorView(cs, _loadError!)
-                : LayoutBuilder(
-                    builder: (context, c) {
-                      final wide = c.maxWidth >= 900;
+                    ? _errorView(cs, _loadError!)
+                    : LayoutBuilder(
+                        builder: (context, c) {
+                          final wide = c.maxWidth >= 900;
 
-                      if (wide) {
-                        return Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              _headerBanner(cs),
-                              const SizedBox(height: 12),
-                              Expanded(
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: _leftPanel(cs, orientation),
+                          if (wide) {
+                            return Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: [
+                                  _headerBanner(cs),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: _leftPanel(cs, orientation),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 18),
+                                          child: _swapBox(cs),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: _rightPanel(cs)),
+                                      ],
                                     ),
-                                    const SizedBox(width: 10),
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 18),
-                                      child: _swapBox(cs),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(child: _rightPanel(cs)),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        );
-                      }
+                            );
+                          }
 
-                      return _mobileMockLayout(cs);
-                    },
-                  ),
+                          return _mobileMockLayout(cs);
+                        },
+                      ),
           ),
         );
       },
@@ -1602,8 +1668,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // LEFT PANEL (desktop)
   Widget _leftPanel(ColorScheme cs, Orientation orientation) {
     final selected = _selected;
-    final showInputMienSpeaker =
-        (_inputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
+    final showInputMienAudioOptions =
+        (_inputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
 
     return Card(
       elevation: 0,
@@ -1633,7 +1699,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             ),
             const SizedBox(height: 6),
 
-            // ✅ Mic row hidden entirely when Input=Mien
             if (_inputLang != Lang.mien)
               Row(
                 children: [
@@ -1713,16 +1778,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (showInputMienSpeaker) ...[
-                        const SizedBox(height: 6),
+                      if (showInputMienAudioOptions) ...[
+                        const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            tooltip: 'Play Mien audio',
-                            onPressed: () =>
-                                _playMienAudioIfAvailable(selected),
-                            icon: Icon(Icons.volume_up, color: cs.primary),
-                          ),
+                          child: _mienAudioButtons(selected, cs),
                         ),
                       ],
                     ],
@@ -1816,8 +1876,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     final selected = _selected;
 
     final outputText = selected?.inLang(_outputLang) ?? '';
-    final showRightMienSpeaker =
-        (_outputLang == Lang.mien) && (selected?.hasMienAudio ?? false);
+    final showRightMienAudioOptions =
+        (_outputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
 
     final exu = (selected == null)
         ? ''
@@ -1856,6 +1916,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                       Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: 6,
+                        runSpacing: 8,
                         children: [
                           Text(
                             (selected == null || outputText.trim().isEmpty)
@@ -1866,18 +1927,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          if (selected != null && showRightMienSpeaker)
-                            IconButton(
-                              tooltip: 'Play Mien audio',
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: () =>
-                                  _playMienAudioIfAvailable(selected),
-                              icon: Icon(Icons.volume_up, color: cs.primary),
-                            ),
-
-                          // ✅ DISABLE speaker for Lao
+                          if (selected != null && showRightMienAudioOptions)
+                            _mienAudioButtons(selected, cs, compact: true),
                           if (selected != null &&
                               _outputLang != Lang.mien &&
                               _outputLang != Lang.lao)
@@ -1892,7 +1943,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                         ],
                       ),
 
-                      // Optional: show a small note for Lao
                       if (selected != null && _outputLang == Lang.lao) ...[
                         const SizedBox(height: 6),
                         Text(
@@ -1946,7 +1996,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                                 style: TextStyle(color: cs.onSurfaceVariant),
                               ),
                               IconButton(
-                                tooltip: 'Speak Cantonese (Chinese characters)',
+                                tooltip:
+                                    'Speak Cantonese (Chinese characters)',
                                 visualDensity: VisualDensity.compact,
                                 padding: EdgeInsets.zero,
                                 constraints: const BoxConstraints(),
@@ -1989,7 +2040,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     );
   }
 
-  // Dropdown row
   Widget _langRow({
     required String title,
     required Lang value,
@@ -2109,8 +2159,6 @@ class ContributorFooter extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 10),
-
-              /// CONTACT EMAIL (clickable)
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 6,
@@ -2132,7 +2180,6 @@ class ContributorFooter extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 14),
               Text(
                 wip,

@@ -1756,6 +1756,7 @@ audioplayers_android
 audioplayers_darwin
 audioplayers_platform_interface
 audioplayers_web
+audioplayers_windows
 
 MIT License
 
