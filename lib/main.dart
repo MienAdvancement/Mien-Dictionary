@@ -40,8 +40,8 @@
 //   assets/data/mien_translation_march1.json
 
 import 'dart:convert';
-import 'dart:js' as js;
-
+import 'tts_web_helper_stub.dart'
+    if (dart.library.js) 'tts_web_helper_web.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
@@ -861,7 +861,7 @@ String _normalizeAudioToAssetSourcePath(String raw) {
 })();
 """;
 
-    final result = js.context.callMethod('eval', [script]).toString();
+    final result = webEval(script).toString();
     if (result == 'NO_API') {
       _toast('Browser TTS not supported.');
       return false;
