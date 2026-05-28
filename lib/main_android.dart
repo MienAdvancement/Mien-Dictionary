@@ -60,7 +60,7 @@ class MienDictionaryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mien Translation',
+      title: 'Mien Translate',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.teal),
       home: const DictionaryHomePage(),
