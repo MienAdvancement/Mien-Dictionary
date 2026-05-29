@@ -32,8 +32,8 @@ android {
         applicationId = "com.cfma.MienTranslation"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "3.1"
     }
 
     signingConfigs {

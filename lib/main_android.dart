@@ -1046,6 +1046,8 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     return parts.join('\n');
   }
 
+  final bool enableAiAudio = false;
+
   Widget _mienAudioButtons(
     DictEntry selected,
     ColorScheme cs, {
@@ -1074,7 +1076,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           label: const Text('Native'),
         ),
 
-        if (selected.hasAiAudio)
+        if (enableAiAudio && selected.hasAiAudio)
           OutlinedButton.icon(
             style: compact
                 ? OutlinedButton.styleFrom(
@@ -1540,7 +1542,17 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         return Scaffold(
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
-            title: const Text('Mien Translate'),
+            title: const Center(
+              child: Text(
+                'Mien Translate',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
             actions: [
               IconButton(
                 tooltip: 'Reload JSON',

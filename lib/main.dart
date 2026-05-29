@@ -1540,7 +1540,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         return Scaffold(
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
-            title: const Text('Mien Translate'),
+            title: const Center(
+              child: Text('Mien Translate', textAlign: TextAlign.center),
+            ),
             actions: [
               IconButton(
                 tooltip: 'Reload JSON',
