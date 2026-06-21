@@ -36,7 +36,7 @@
 // - assets/ui/
 //
 // Active JSON file:
-//   assets/data/mien_translation_march1.json
+//   assets/data/mien_translation_june9.json
 
 import 'dart:convert';
 import 'tts_web_helper_stub.dart'
@@ -60,7 +60,7 @@ class MienDictionaryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mien Translation',
+      title: 'Mien Translate',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.teal),
       home: const DictionaryHomePage(),
@@ -114,6 +114,14 @@ class DictEntry {
   final String cantonese;
 
   final String example;
+  final String exampleMien;
+  final String exampleEnglish;
+  final String exampleChinese;
+  final String exampleThai;
+  final String exampleFrench;
+  final String exampleLao;
+  final String exampleVietnamese;
+  final String audioExample;
   final String usage;
   final String origin;
 
@@ -142,6 +150,14 @@ class DictEntry {
     required this.mandarin,
     required this.cantonese,
     required this.example,
+    required this.exampleMien,
+    required this.exampleEnglish,
+    required this.exampleChinese,
+    required this.exampleThai,
+    required this.exampleFrench,
+    required this.exampleLao,
+    required this.exampleVietnamese,
+    required this.audioExample,
     required this.usage,
     required this.origin,
     required this.audioOriginal,
@@ -187,9 +203,38 @@ class DictEntry {
     }
   }
 
+  String exampleFor(Lang lang) {
+    switch (lang) {
+      case Lang.mien:
+        return exampleMien.trim().isNotEmpty ? exampleMien : example;
+      case Lang.english:
+        return exampleEnglish;
+      case Lang.chinese:
+        return exampleChinese;
+      case Lang.thai:
+        return exampleThai;
+      case Lang.french:
+        return exampleFrench;
+      case Lang.lao:
+        return exampleLao;
+      case Lang.vietnamese:
+        return exampleVietnamese;
+    }
+  }
+
   bool get hasOriginalAudio => audioOriginal.trim().isNotEmpty;
   bool get hasAiAudio => audioAI.trim().isNotEmpty;
   bool get hasAnyMienAudio => hasOriginalAudio || hasAiAudio;
+  bool get hasExampleAudio => audioExample.trim().isNotEmpty;
+  bool get hasExample =>
+      example.trim().isNotEmpty ||
+      exampleMien.trim().isNotEmpty ||
+      exampleEnglish.trim().isNotEmpty ||
+      exampleChinese.trim().isNotEmpty ||
+      exampleThai.trim().isNotEmpty ||
+      exampleFrench.trim().isNotEmpty ||
+      exampleLao.trim().isNotEmpty ||
+      exampleVietnamese.trim().isNotEmpty;
 }
 
 class DictionaryHomePage extends StatefulWidget {
@@ -204,7 +249,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   // CONFIG
   // =========================
   static const String kDictAssetPath =
-      'assets/data/mien_translation_march1.json';
+      'assets/data/mien_translation_june9.json';
 
   // Header banner image (put this file at assets/ui/mien_header.jpg)
   static const String kHeaderBannerAsset = 'assets/ui/mien_header.jpg';
@@ -217,9 +262,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   static const String kCreditHeadline = 'Mienh waac makes us Mienh';
   static const String kCreditLine1 = 'Developed by: Dr. Kal Phan';
   static const String kCreditLine2 = 'The Center for Mien Advancement';
-  static const String kCreditWip =
-      'A work in progress—translations are still being refined. Your feedback and suggestions help strengthen accuracy and understanding.';
-  static const String kCreditContact = 'Contact webmaster: phankal@comcast.net';
+  static const String kCreditContact = 'phankal@comcast.net';
 
   // Audio player
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -332,7 +375,17 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     setState(() {
       _entryWasSelected = true;
       _selected = e;
-      _results = const []; // show only the selected option
+      _results = const [];
+
+      final selectedText = e.inLang(_inputLang).trim();
+
+      if (selectedText.isNotEmpty) {
+        _queryCtrl.text = selectedText;
+        _queryCtrl.selection = TextSelection.collapsed(
+          offset: selectedText.length,
+        );
+      }
+
       _queryFocus.unfocus();
     });
   }
@@ -410,6 +463,16 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   }
 
   int _cap(int v) => v > 800 ? 800 : v;
+  int usageRank(String usage) {
+    final u = usage.trim().toLowerCase();
+
+    if (u.isEmpty) return 0;
+    if (u.contains('literary')) return 1;
+    if (u.contains('ritual')) return 2;
+    if (u.contains('baby')) return 3;
+
+    return 4;
+  }
 
   void _applyFilter() {
     if (_loading) return;
@@ -444,22 +507,18 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       final s = b.score.compareTo(a.score);
       if (s != 0) return s;
 
-      final len = a.term.length.compareTo(b.term.length);
-      if (len != 0) return len;
+      final ucmp = usageRank(a.entry.usage).compareTo(usageRank(b.entry.usage));
+      if (ucmp != 0) return ucmp;
 
-      return a.term.compareTo(b.term);
+      final outA = a.entry.inLang(_outputLang).toLowerCase();
+      final outB = b.entry.inLang(_outputLang).toLowerCase();
+
+      return outA.compareTo(outB);
     });
 
     final matches = scored.map((x) => x.entry).take(400).toList();
 
-    DictEntry? nextSelected;
-    if (matches.isEmpty) {
-      nextSelected = null;
-    } else if (_selected != null && matches.any((e) => e.id == _selected!.id)) {
-      nextSelected = _selected;
-    } else {
-      nextSelected = matches.first;
-    }
+    DictEntry? nextSelected = null;
 
     setState(() {
       _results = matches;
@@ -549,6 +608,54 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         final mandarin = getStr(m, ['Mandarin', 'mandarin']);
         final cantonese = getStr(m, ['Cantonese', 'cantonese']);
         final example = getStr(m, ['Example', 'example']);
+        final exampleMien = getStr(m, [
+          'Example (Mien)',
+          'Mien (Example)',
+          'Example Mien',
+          'example_mien',
+        ]);
+        final exampleEnglish = getStr(m, [
+          'Example (English)',
+          'English (Example)',
+          'Example English',
+          'example_english',
+        ]);
+        final exampleChinese = getStr(m, [
+          'Example (Chinese)',
+          'Chinse (Example)',
+          'Chinse (Example)',
+          'Example Chinese',
+          'example_chinese',
+        ]);
+        final exampleThai = getStr(m, [
+          'Example (Thai)',
+          'Thai (Example)',
+          'Example Thai',
+          'example_thai',
+        ]);
+        final exampleFrench = getStr(m, [
+          'Example (French)',
+          'French (Example)',
+          'Example French',
+          'example_french',
+        ]);
+        final exampleLao = getStr(m, [
+          'Example (Lao)',
+          'Lao (Example)',
+          'Example Lao',
+          'example_lao',
+        ]);
+        final exampleVietnamese = getStr(m, [
+          'Example (Vietnamese)',
+          'Vietnamese (Example)',
+          'Example Vietnamese',
+          'example_vietnamese',
+        ]);
+        final audioExample = getStr(m, [
+          'AudioExample',
+          'Audio Example',
+          'audio_example',
+        ]);
         final usage = getStr(m, ['Usage', 'usage']);
         final origin = getStr(m, ['Origin', 'origin']);
 
@@ -615,6 +722,14 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             mandarin: mandarin,
             cantonese: cantonese,
             example: example,
+            exampleMien: exampleMien,
+            exampleEnglish: exampleEnglish,
+            exampleChinese: exampleChinese,
+            exampleThai: exampleThai,
+            exampleFrench: exampleFrench,
+            exampleLao: exampleLao,
+            exampleVietnamese: exampleVietnamese,
+            audioExample: audioExample,
             usage: usage,
             origin: origin,
             audioOriginal: audioOriginal,
@@ -707,6 +822,11 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     final mySession = _listenSession;
 
     _queryCtrl.clear();
+    setState(() {
+      _entryWasSelected = false;
+      _selected = null;
+      _results = const [];
+    });
     _queryFocus.requestFocus();
 
     setState(() {
@@ -1003,6 +1123,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       'usage': _safeOneLine(e.usage),
       'origin': _safeOneLine(e.origin),
       'audioOriginal': _safeOneLine(e.audioOriginal),
+      'audioExample': _safeOneLine(e.audioExample),
     };
 
     final merged = <String, String>{...base.queryParameters, ...ctx};
@@ -1025,6 +1146,15 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     if (!ok) _toast('Could not open feedback form.');
   }
 
+  Future<void> _openContactEmail() async {
+    final subject = Uri.encodeComponent('Mien Translate Contact');
+    final body = Uri.encodeComponent('Please write your message here:');
+    final uri = Uri.parse('mailto:$kCreditContact?subject=$subject&body=$body');
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) _toast('Could not open email application.');
+  }
+
   // -------------------------
   // UI helpers
   // -------------------------
@@ -1033,25 +1163,242 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  String _entryTextWithPos(DictEntry e, Lang lang) {
+    final text = e.inLang(lang).trim();
+    final pos = e.pos.trim();
+    if (text.isEmpty) return '';
+    if (lang == Lang.mien && pos.isNotEmpty) return '$text ($pos)';
+    return text;
+  }
+
+  Widget _entryTextWithPosRich(
+    DictEntry e,
+    Lang lang, {
+    double fontSize = 18,
+    FontWeight wordWeight = FontWeight.w700,
+  }) {
+    final text = e.inLang(lang).trim();
+    final pos = e.pos.trim();
+
+    if (text.isEmpty) {
+      return const Text('—');
+    }
+
+    final showPos = lang == Lang.mien && pos.isNotEmpty;
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(decoration: TextDecoration.none),
+        children: [
+          TextSpan(
+            text: text,
+            style: TextStyle(
+              decoration: TextDecoration.none,
+              fontSize: fontSize,
+              fontWeight: wordWeight,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+          if (showPos)
+            TextSpan(
+              text: ' ($pos)',
+              style: TextStyle(
+                decoration: TextDecoration.none,
+                fontSize: fontSize - 1,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w400,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   String _exampleUsageOriginLines(DictEntry e) {
     final parts = <String>[];
 
     final note = e.noteFor(_outputLang).trim();
     if (note.isNotEmpty) parts.add('Note: $note');
 
-    if (e.example.trim().isNotEmpty) parts.add('Example: ${e.example.trim()}');
     if (e.usage.trim().isNotEmpty) parts.add('Usage: ${e.usage.trim()}');
     if (e.origin.trim().isNotEmpty) parts.add('Origin: ${e.origin.trim()}');
 
     return parts.join('\n');
   }
 
+  Lang _exampleTranslationLang() {
+    if (_outputLang != Lang.mien) return _outputLang;
+    if (_inputLang != Lang.mien) return _inputLang;
+    return Lang.english;
+  }
+
+  Future<void> _playExampleAudio(DictEntry e) async {
+    await _playSpecificMienAssetAudio(e.audioExample, label: 'Example');
+  }
+
+  Future<void> _speakExampleTranslation(DictEntry e, Lang lang) async {
+    final raw = e.exampleFor(lang).trim();
+    if (raw.isEmpty) {
+      _toast('No ${lang.label} example to speak.');
+      return;
+    }
+
+    if (lang == Lang.mien) {
+      if (e.hasExampleAudio) {
+        await _playExampleAudio(e);
+      } else {
+        _toast('No Mien example audio for this entry.');
+      }
+      return;
+    }
+
+    if (lang == Lang.lao) {
+      _toast('Lao pronunciation is temporarily disabled.');
+      return;
+    }
+
+    if (lang == Lang.chinese) {
+      final chars = e.exampleChinese.trim();
+      if (chars.isEmpty) {
+        _toast('No Chinese example to speak.');
+        return;
+      }
+      if (kIsWeb) {
+        await _webSpeak(chars, lang: 'zh-CN');
+        return;
+      }
+      try {
+        await _tts.stop();
+        await _tts.setLanguage('zh-CN');
+        await _tts.speak(_stripParenthetical(chars));
+      } catch (err) {
+        _toast('TTS failed: $err');
+      }
+      return;
+    }
+
+    final cleaned = _stripParenthetical(raw).trim();
+    final locale = _localeForOutput(lang);
+    if (kIsWeb) {
+      await _webSpeak(cleaned, lang: locale);
+      return;
+    }
+
+    try {
+      await _tts.stop();
+      await _tts.setLanguage(locale);
+      await _tts.speak(cleaned);
+    } catch (err) {
+      _toast('TTS failed: $err');
+    }
+  }
+
+  Future<void> _showExampleDialog(DictEntry e) async {
+    final cs = Theme.of(context).colorScheme;
+    final mienExample = e.exampleFor(Lang.mien).trim();
+    final translationLang = _exampleTranslationLang();
+    final translatedExample = e.exampleFor(translationLang).trim();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Example'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mien:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          mienExample.isEmpty ? '—' : mienExample,
+                          style: const TextStyle(fontSize: 16, height: 1.35),
+                        ),
+                      ),
+                      if (e.hasExampleAudio)
+                        IconButton(
+                          tooltip: 'Play Mien example',
+                          onPressed: () => _playExampleAudio(e),
+                          icon: Icon(Icons.volume_up, color: cs.primary),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    '${translationLang.label}:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          translatedExample.isEmpty ? '—' : translatedExample,
+                          style: const TextStyle(fontSize: 16, height: 1.35),
+                        ),
+                      ),
+                      if (translatedExample.isNotEmpty &&
+                          translationLang != Lang.lao)
+                        IconButton(
+                          tooltip: 'Speak ${translationLang.label} example',
+                          onPressed: () =>
+                              _speakExampleTranslation(e, translationLang),
+                          icon: Icon(Icons.volume_up, color: cs.primary),
+                        ),
+                    ],
+                  ),
+                  if (translationLang == Lang.lao &&
+                      translatedExample.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Lao pronunciation coming soon.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  final bool enableAiAudio = true;
+
   Widget _mienAudioButtons(
     DictEntry selected,
     ColorScheme cs, {
     bool compact = false,
   }) {
-    if (!selected.hasAnyMienAudio) {
+    if (!selected.hasAnyMienAudio && !selected.hasExample) {
       return const SizedBox.shrink();
     }
     return Wrap(
@@ -1059,22 +1406,23 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       spacing: 8,
       runSpacing: 8,
       children: [
-        OutlinedButton.icon(
-          style: compact
-              ? OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                )
-              : null,
-          onPressed: () => _playOriginalAudio(selected),
-          icon: Icon(Icons.volume_up, color: cs.primary),
-          label: const Text('Native'),
-        ),
+        if (selected.hasOriginalAudio)
+          OutlinedButton.icon(
+            style: compact
+                ? OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  )
+                : null,
+            onPressed: () => _playOriginalAudio(selected),
+            icon: Icon(Icons.volume_up, color: cs.primary),
+            label: const Text('Native'),
+          ),
 
-        if (selected.hasAiAudio)
+        if (enableAiAudio && selected.hasAiAudio)
           OutlinedButton.icon(
             style: compact
                 ? OutlinedButton.styleFrom(
@@ -1088,6 +1436,22 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             onPressed: () => _playAiAudio(selected),
             icon: Icon(Icons.smart_toy, color: cs.primary),
             label: const Text('AI'),
+          ),
+
+        if (selected.hasExample)
+          OutlinedButton.icon(
+            style: compact
+                ? OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  )
+                : null,
+            onPressed: () => _showExampleDialog(selected),
+            icon: Icon(Icons.article_outlined, color: cs.primary),
+            label: const Text('Example'),
           ),
       ],
     );
@@ -1278,13 +1642,23 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
               hintText: 'Enter Text',
               border: const UnderlineInputBorder(),
               isDense: true,
-              suffixIcon: _queryCtrl.text.trim().isEmpty
-                  ? null
-                  : IconButton(
+              suffixIcon: _queryCtrl.text.trim().isNotEmpty
+                  ? IconButton(
                       tooltip: 'Clear',
                       icon: const Icon(Icons.clear),
                       onPressed: _clearSearchAndCancelDictation,
-                    ),
+                    )
+                  : (_inputLang == Lang.mien
+                        ? null
+                        : IconButton(
+                            tooltip: _isListening
+                                ? 'Stop dictation'
+                                : 'Speak to search',
+                            icon: Icon(
+                              _isListening ? Icons.stop_circle : Icons.mic,
+                            ),
+                            onPressed: _toggleDictation,
+                          )),
             ),
           ),
         ],
@@ -1298,8 +1672,10 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _mobileOutputPanel(cs),
-        const SizedBox(height: 10),
-        _mobileWordOptionsPanel(cs),
+        if (!_entryWasSelected) ...[
+          const SizedBox(height: 10),
+          _mobileWordOptionsPanel(cs),
+        ],
       ],
     );
   }
@@ -1309,7 +1685,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final outputText = selected?.inLang(_outputLang).trim() ?? '';
     final showMienAudioOptions =
-        (_outputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
+        (_outputLang == Lang.mien) &&
+        ((selected?.hasAnyMienAudio ?? false) ||
+            (selected?.hasExample ?? false));
 
     final exu = (selected == null) ? '' : _exampleUsageOriginLines(selected);
     final showExu = selected != null && exu.trim().isNotEmpty;
@@ -1334,13 +1712,20 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             spacing: 6,
             runSpacing: 8,
             children: [
-              Text(
-                (selected == null || outputText.isEmpty) ? '—' : outputText,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              (selected == null || outputText.isEmpty)
+                  ? const Text(
+                      '—',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : _entryTextWithPosRich(
+                      selected,
+                      _outputLang,
+                      fontSize: 18,
+                      wordWeight: FontWeight.w700,
+                    ),
 
               if (selected != null && showMienAudioOptions)
                 _mienAudioButtons(selected, cs, compact: true),
@@ -1356,6 +1741,22 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   onPressed: () => _speakOutputIfNonMien(selected),
                   icon: Icon(Icons.volume_up, color: cs.primary),
                 ),
+
+              if (selected != null &&
+                  selected.hasExample &&
+                  !showMienAudioOptions)
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  ),
+                  onPressed: () => _showExampleDialog(selected),
+                  icon: Icon(Icons.article_outlined, color: cs.primary),
+                  label: const Text('Example'),
+                ),
             ],
           ),
 
@@ -1367,7 +1768,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             ),
           ],
 
-          if (selected != null && selected.pos.trim().isNotEmpty) ...[
+          if (selected != null &&
+              _outputLang != Lang.mien &&
+              selected.pos.trim().isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               selected.pos.trim(),
@@ -1478,8 +1881,33 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Input Language',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Output Language',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
+          const Divider(height: 1),
           if (!hasList)
             const SizedBox.shrink()
           else
@@ -1492,28 +1920,45 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                 final e = _results[i];
                 final isSel = _selected?.id == e.id;
 
-                final title = e.inLang(_inputLang).trim();
-                final subtitle = (_inputLang == Lang.mien)
-                    ? e.inLang(_outputLang).trim()
-                    : e.mien.trim();
+                final inputText = _entryTextWithPos(e, _inputLang);
+                final usage = e.usage.trim();
+                final outputBase = _entryTextWithPos(e, _outputLang);
+                final outputText = usage.isEmpty
+                    ? outputBase
+                    : '$outputBase [$usage]';
 
-                return ListTile(
-                  dense: true,
-                  selected: isSel,
+                return InkWell(
                   onTap: () => _selectEntry(e),
-                  title: Text(
-                    title.isEmpty ? '—' : title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isSel ? cs.primary : cs.onSurface,
+                  child: Container(
+                    color: isSel
+                        ? cs.primaryContainer.withOpacity(0.45)
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            inputText.isEmpty ? '—' : inputText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: isSel ? cs.primary : cs.onSurface,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            outputText.isEmpty ? '—' : outputText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  subtitle: Text(
-                    subtitle.isEmpty ? '—' : subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 );
               },
@@ -1541,19 +1986,17 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
             title: const Center(
-              child: Text('Mien Translate', textAlign: TextAlign.center),
+              child: Text(
+                'Mien Translate',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
             ),
             actions: [
-              IconButton(
-                tooltip: 'Reload JSON',
-                onPressed: _loadJson,
-                icon: const Icon(Icons.refresh),
-              ),
-              IconButton(
-                tooltip: 'Clear search',
-                onPressed: _clearSearchAndCancelDictation,
-                icon: const Icon(Icons.clear),
-              ),
               IconButton(
                 tooltip: 'About',
                 icon: const Icon(Icons.info_outline),
@@ -1582,8 +2025,6 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                   headline: kCreditHeadline,
                   line1: kCreditLine1,
                   line2: kCreditLine2,
-                  contactEmail: 'phankal@comcast.net',
-                  wip: kCreditWip,
                 ),
           bottomSheet: showFeedbackGlobal
               ? SafeArea(
@@ -1593,10 +2034,41 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                     child: SizedBox(
                       width: double.infinity,
                       height: 46,
-                      child: OutlinedButton.icon(
-                        onPressed: _openFeedbackFormForSelected,
-                        icon: const Icon(Icons.feedback_outlined),
-                        label: const Text('Feedback and Suggestion'),
+                      child: PopupMenuButton<String>(
+                        tooltip: 'Feedback, Suggestion, and Contact',
+                        onSelected: (value) {
+                          if (value == 'feedback') {
+                            _openFeedbackFormForSelected();
+                          } else if (value == 'contact') {
+                            _openContactEmail();
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem<String>(
+                            value: 'feedback',
+                            child: Text('Feedback and Suggestion'),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'contact',
+                            child: Text('Contact'),
+                          ),
+                        ],
+                        child: Container(
+                          width: double.infinity,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            border: Border.all(),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.feedback_outlined),
+                              SizedBox(width: 8),
+                              Text('Feedback, Suggestion, and Contact'),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1697,7 +2169,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
   Widget _leftPanel(ColorScheme cs, Orientation orientation) {
     final selected = _selected;
     final showInputMienAudioOptions =
-        (_inputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
+        (_inputLang == Lang.mien) &&
+        ((selected?.hasAnyMienAudio ?? false) ||
+            (selected?.hasExample ?? false));
 
     return Card(
       elevation: 0,
@@ -1800,7 +2274,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                         child: Text(
                           selected.inLang(_inputLang).trim().isEmpty
                               ? '—'
-                              : selected.inLang(_inputLang).trim(),
+                              : _entryTextWithPos(selected, _inputLang),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -1875,11 +2349,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
         final e = _results[i];
         final isSel = _selected?.id == e.id;
 
-        final inputText = e.inLang(_inputLang);
+        final inputText = _entryTextWithPos(e, _inputLang);
 
-        final subtitleText = (_inputLang == Lang.mien)
-            ? e.inLang(_outputLang).trim()
-            : e.mien.trim();
+        final subtitleText = _entryTextWithPos(e, _outputLang);
 
         return ListTile(
           dense: true,
@@ -1908,7 +2380,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
     final outputText = selected?.inLang(_outputLang) ?? '';
     final showRightMienAudioOptions =
-        (_outputLang == Lang.mien) && (selected?.hasAnyMienAudio ?? false);
+        (_outputLang == Lang.mien) &&
+        ((selected?.hasAnyMienAudio ?? false) ||
+            (selected?.hasExample ?? false));
 
     final exu = (selected == null)
         ? ''
@@ -1952,7 +2426,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                           Text(
                             (selected == null || outputText.trim().isEmpty)
                                 ? '—'
-                                : outputText.trim(),
+                                : _entryTextWithPos(selected, _outputLang),
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w600,
@@ -1971,6 +2445,24 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
                               onPressed: () => _speakOutputIfNonMien(selected),
                               icon: Icon(Icons.volume_up, color: cs.primary),
                             ),
+                          if (selected != null &&
+                              selected.hasExample &&
+                              !showRightMienAudioOptions)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              onPressed: () => _showExampleDialog(selected),
+                              icon: Icon(
+                                Icons.article_outlined,
+                                color: cs.primary,
+                              ),
+                              label: const Text('Example'),
+                            ),
                         ],
                       ),
 
@@ -1987,7 +2479,9 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
 
                       const SizedBox(height: 10),
 
-                      if (selected != null && selected.pos.trim().isNotEmpty)
+                      if (selected != null &&
+                          _outputLang != Lang.mien &&
+                          selected.pos.trim().isNotEmpty)
                         Text(
                           selected.pos,
                           style: TextStyle(color: cs.onSurfaceVariant),
@@ -2120,38 +2614,17 @@ class ContributorFooter extends StatelessWidget {
   final String headline;
   final String line1;
   final String line2;
-  final String contactEmail;
-  final String wip;
 
   const ContributorFooter({
     super.key,
     required this.headline,
     required this.line1,
     required this.line2,
-    required this.contactEmail,
-    required this.wip,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
-    Future<void> sendEmail() async {
-      final subject = Uri.encodeComponent('Mien Dictionary Technical Issue');
-      final body = Uri.encodeComponent(
-        'Please describe the problem you encountered:',
-      );
-
-      final uri = Uri.parse('mailto:$contactEmail?subject=$subject&body=$body');
-
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-      if (!ok && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open email application')),
-        );
-      }
-    }
 
     return Material(
       elevation: 2,
@@ -2187,38 +2660,6 @@ class ContributorFooter extends StatelessWidget {
                 line2,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 6,
-                children: [
-                  Text(
-                    'Contact:',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                  InkWell(
-                    onTap: sendEmail,
-                    child: Text(
-                      contactEmail,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.primary,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                wip,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: cs.onSurfaceVariant,
-                ),
               ),
             ],
           ),
