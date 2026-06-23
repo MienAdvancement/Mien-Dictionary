@@ -928,7 +928,7 @@ class _DictionaryHomePageState extends State<DictionaryHomePage> {
       }
 
       final aiUrl =
-          'https://mienadvancement.github.io/Mien-Dictionary/assets/assets/audio/AI/$fileName';
+          'https://mienadvancement.github.io/Mien-Translate/assets/assets/audio/AI/$fileName';
 
       await _audioPlayer.stop();
       await _audioPlayer.play(UrlSource(aiUrl));
