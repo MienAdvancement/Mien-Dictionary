@@ -43532,7 +43532,7 @@ m=i
 i=m
 m=A.c1(i,"\\","/")
 if(J.aLb(m,"AI/"))m=J.aLc(m,3)
-l="https://mienadvancement.github.io/Mien-Dictionary/assets/assets/audio/AI/"+A.l(m)
+l="https://mienadvancement.github.io/Mien-Translate/assets/assets/audio/AI/"+A.l(m)
 i=n.d
 s=7
 return A.z(i.bh(0),$async$te)
